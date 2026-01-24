@@ -27,8 +27,9 @@ export interface Vendita {
   operatoreEmail: string;
   incassato: boolean;
   noteAmministrazione: string;
-  notizie?: string; // Stringa che conterrà lo storico chat
-  nuove_notizie?: boolean; // Stato per il colore dell'icona
+  notizie?: string;
+  nuove_notizie?: boolean;
+  ultimo_mittente?: string; // Nome di chi ha inviato l'ultimo messaggio
   created_at?: string;
 }
 

@@ -19,9 +19,10 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
   const [tempKey, setTempKey] = useState(dbConfig?.key || '');
   const [showSql, setShowSql] = useState(false);
 
-  const sqlCode = `-- UPDATE PER CHAT DI PRATICA
+  const sqlCode = `-- UPDATE PER CHAT DI PRATICA AVANZATA
 ALTER TABLE vendite ADD COLUMN IF NOT EXISTS notizie TEXT;
 ALTER TABLE vendite ADD COLUMN IF NOT EXISTS nuove_notizie BOOLEAN DEFAULT FALSE;
+ALTER TABLE vendite ADD COLUMN IF NOT EXISTS ultimo_mittente TEXT;
 
 -- REPLICA IDENTITY FULL PER REALTIME CHAT
 ALTER TABLE vendite REPLICA IDENTITY FULL;
@@ -40,26 +41,9 @@ CREATE TABLE IF NOT EXISTS vendite (
   note_amministrazione TEXT,
   notizie TEXT,
   nuove_notizie BOOLEAN DEFAULT FALSE,
+  ultimo_mittente TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
-CREATE TABLE IF NOT EXISTS notifiche (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  to_email TEXT,
-  message TEXT,
-  from_user TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
--- CONFIGURA IL REALTIME (Importante per il cambio colore icona)
-DO $$ 
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    ALTER PUBLICATION supabase_realtime SET TABLE vendite, notifiche;
-  ELSE
-    CREATE PUBLICATION supabase_realtime FOR TABLE vendite, notifiche;
-  END IF;
-END $$;`;
+);`;
 
   const handleSaveDb = (e: React.FormEvent) => {
     e.preventDefault();

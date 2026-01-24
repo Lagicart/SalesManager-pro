@@ -33,7 +33,6 @@ const App: React.FC = () => {
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const lastFetchRef = useRef<number>(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
 
   const addToast = (message: string, type: 'success' | 'error' | 'info' | 'notification' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -51,13 +50,6 @@ const App: React.FC = () => {
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 8000);
-  };
-
-  const requestNotificationPermission = async () => {
-    if ('Notification' in window) {
-      const permission = await Notification.requestPermission();
-      setNotifPermission(permission);
-    }
   };
 
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('sm_is_logged_in') === 'true');
@@ -141,6 +133,7 @@ const App: React.FC = () => {
           noteAmministrazione: d.note_amministrazione,
           notizie: d.notizie || '',
           nuove_notizie: d.nuove_notizie || false,
+          ultimo_mittente: d.ultimo_mittente || '',
           created_at: d.created_at
         }));
         setVendite(cloudData);
@@ -154,7 +147,6 @@ const App: React.FC = () => {
       }
 
       if (oRes.data) setOperatori(ensureAdmin(oRes.data as Operatore[]));
-      setLastSyncTime(new Date().toLocaleTimeString('it-IT'));
     } catch (e) { console.error(e); } finally { setIsSyncing(false); }
   }, [supabase, ensureAdmin]);
 
@@ -189,11 +181,9 @@ const App: React.FC = () => {
     setCurrentUser(user);
     setIsLoggedIn(true);
     addToast(`Bentornato, ${user.nome}!`, 'success');
-    requestNotificationPermission();
     setTimeout(() => fetchData(true), 500);
   };
 
-  // Added handleLogout function to fix the "Cannot find name 'handleLogout'" error
   const handleLogout = () => {
     setCurrentUser(null);
     setIsLoggedIn(false);
@@ -208,6 +198,7 @@ const App: React.FC = () => {
         payload.metodo_pagamento = data.metodoPagamento;
         payload.operatore_email = data.operatoreEmail.toLowerCase();
         payload.note_amministrazione = data.noteAmministrazione;
+        payload.ultimo_mittente = data.ultimo_mittente;
         delete payload.metodoPagamento;
         delete payload.operatoreEmail;
         delete payload.noteAmministrazione;
@@ -228,13 +219,6 @@ const App: React.FC = () => {
     }
     return list;
   }, [vendite, currentUser, viewAsEmail]);
-
-  const filteredAgenti = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.role === 'admin' && viewAsEmail) return agenti.filter(a => a.operatoreEmail.toLowerCase() === viewAsEmail.toLowerCase());
-    if (currentUser.role === 'admin') return agenti;
-    return agenti.filter(a => a.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
-  }, [agenti, currentUser, viewAsEmail]);
 
   if (!isLoggedIn || !currentUser) {
     return <LoginScreen operatori={operatori} onLogin={handleLogin} onConfigChange={setDbConfig} />;
@@ -272,11 +256,6 @@ const App: React.FC = () => {
         </div>
         <div className="mt-auto p-6 border-t border-white/10">
           <UserSwitcher currentUser={currentUser} operatori={operatori} onLogout={handleLogout} viewAsEmail={viewAsEmail} onViewAsChange={setViewAsEmail} />
-          <div className="mt-4 flex flex-col gap-2">
-             <div className="flex flex-col gap-1 pt-2 border-t border-white/5">
-                {cloudStatus === 'connected' ? <div className="flex items-center gap-2 text-emerald-400 text-[9px] font-bold uppercase tracking-widest"><Cloud className="w-3 h-3" /> Cloud Connesso</div> : <div className="flex items-center gap-2 text-slate-500 text-[9px] font-bold uppercase tracking-widest"><CloudOff className="w-3 h-3" /> Offline</div>}
-             </div>
-          </div>
         </div>
       </aside>
 
@@ -304,10 +283,10 @@ const App: React.FC = () => {
                   addToast(`Incasso confermato`, 'success');
                 }} 
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
-                onUpdateNotizie={async (id, notizia, nuoveNotizie) => {
+                onUpdateNotizie={async (id, notizia, nuoveNotizie, mittente) => {
                    const target = vendite.find(v => v.id === id);
                    if (!target) return;
-                   const updated = { ...target, notizie: notizia, nuove_notizie: nuoveNotizie };
+                   const updated = { ...target, notizie: notizia, nuove_notizie: nuoveNotizie, ultimo_mittente: mittente };
                    setVendite(vendite.map(v => v.id === id ? updated : v));
                    await syncToCloud('vendite', updated);
                 }}
@@ -318,11 +297,10 @@ const App: React.FC = () => {
                     if (supabase) await supabase.from('vendite').delete().eq('id', id);
                   }
                 }}
-                onCopy={(text) => { navigator.clipboard.writeText(text); addToast("Copiato", "info"); }}
               />
             )}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
-            {view === 'agents' && <AgentManager agenti={filteredAgenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} onUpdate={async (a) => {
+            {view === 'agents' && <AgentManager agenti={agenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} onUpdate={async (a) => {
               setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]);
               await syncToCloud('agenti', a);
             }} />}
@@ -356,7 +334,7 @@ const App: React.FC = () => {
               await syncToCloud('vendite', newV);
               addToast(editingVendita ? "Aggiornato" : "Registrato", "success");
             }} 
-            userEmail={viewAsEmail || currentUser.email} availableAgentList={filteredAgenti} metodiDisponibili={metodiPagamento}
+            userEmail={viewAsEmail || currentUser.email} availableAgentList={agenti} metodiDisponibili={metodiPagamento}
             initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'}
           />
         </div>
