@@ -271,13 +271,22 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                             </div>
                          ) : (
                             <div className="flex justify-center">
-                               <button 
-                                  onClick={() => isAdmin && onVerifyPayment(v.id)}
-                                  className={`p-2.5 ${isAdmin ? 'bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white' : 'bg-slate-100 text-slate-400 cursor-default'} rounded-xl transition-all`}
-                                  title={isAdmin ? "Clicca per confermare verifica pagamento" : "Pagamento da verificare (Solo Admin)"}
-                               >
-                                  <AlertTriangle className="w-5 h-5 animate-pulse" />
-                               </button>
+                               {isAdmin ? (
+                                 <button 
+                                    onClick={() => onVerifyPayment(v.id)}
+                                    className="p-2.5 bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl transition-all shadow-md shadow-amber-500/10"
+                                    title="Clicca per confermare verifica pagamento (Admin)"
+                                 >
+                                    <AlertTriangle className="w-5 h-5 animate-pulse" />
+                                 </button>
+                               ) : (
+                                 <div 
+                                    className="p-2.5 bg-slate-100 text-slate-400 rounded-xl cursor-help"
+                                    title="Pagamento da verificare (Solo Admin può confermare)"
+                                 >
+                                    <AlertTriangle className="w-5 h-5" />
+                                 </div>
+                               )}
                             </div>
                          )
                        ) : <span className="text-[10px] font-black text-slate-200 uppercase">-</span>}

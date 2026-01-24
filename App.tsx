@@ -11,7 +11,6 @@ import AgentManager from './components/AgentManager';
 import OperatorManager from './components/OperatorManager';
 import SettingsManager from './components/SettingsManager';
 import LoginScreen from './components/LoginScreen';
-import TechnicalManual from './components/TechnicalManual';
 
 const BRAND_LOGO_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2332964D'/%3E%3Cpath d='M30 70 L70 30 M45 30 L70 30 L70 55' stroke='white' stroke-width='12' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
 
@@ -98,7 +97,7 @@ const App: React.FC = () => {
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
-  const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings' | 'manual'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings'>('dashboard');
 
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
@@ -262,7 +261,6 @@ const App: React.FC = () => {
             {currentUser.role === 'admin' && (
               <>
                 <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Users className="w-5 h-5" /><span className="font-medium">Operatori</span></button>
-                <button onClick={() => setView('manual')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'manual' ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><BookOpen className="w-5 h-5" /><span className="font-medium">Manuale Tecnico</span></button>
                 <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Settings className="w-5 h-5" /><span className="font-medium">Impostazioni</span></button>
               </>
             )}
@@ -276,7 +274,7 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-            {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : view === 'manual' ? 'Documentazione' : 'Operatori'}
+            {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : 'Operatori'}
           </h2>
           {view === 'list' && <button onClick={() => { setEditingVendita(null); setIsFormOpen(true); }} className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-lg hover:bg-[#2b7e41] transition-all"><Plus className="w-5 h-5" /> Nuova Vendita</button>}
         </header>
@@ -297,6 +295,10 @@ const App: React.FC = () => {
                   addToast(`Incasso confermato`, 'success');
                 }} 
                 onVerifyPayment={async (id) => {
+                   if (currentUser.role !== 'admin') {
+                     addToast("Azione non consentita", "error");
+                     return;
+                   }
                    const target = vendite.find(v => v.id === id);
                    if (!target) return;
                    const updated = { ...target, pagamentoVerificato: true };
@@ -341,7 +343,6 @@ const App: React.FC = () => {
               setOperatori(ensureAdmin(operatori.filter(o => o.id !== id)));
               if (supabase) await supabase.from('operatori').delete().eq('id', id);
             }} />}
-            {view === 'manual' && <TechnicalManual />}
             {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} onTestNotif={() => addToast("Test Notifica!", "notification")} data={null} onImport={() => {}} />}
           </div>
         </section>
