@@ -230,6 +230,13 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
           </div>
         </div>
       </div>
+
+      {/* FOOTER CREDITS */}
+      <div className="pt-8 text-center border-t border-slate-200">
+        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">
+          Credits: Luca Aimone®2026
+        </p>
+      </div>
     </div>
   );
 };

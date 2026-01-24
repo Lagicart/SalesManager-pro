@@ -19,16 +19,20 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
   const [tempKey, setTempKey] = useState(dbConfig?.key || '');
   const [showSql, setShowSql] = useState(false);
 
-  const sqlCode = `-- 🚀 UPDATE DEFINITIVO PER CHAT PROFESSIONALE
--- 1. Aggiunge le colonne necessarie
+  const sqlCode = `-- 🚀 UPDATE DEFINITIVO PER CHAT E VERIFICA PAGAMENTI
+-- 1. Aggiunge le colonne per la chat e lo stato notifiche
 ALTER TABLE vendite ADD COLUMN IF NOT EXISTS notizie TEXT;
 ALTER TABLE vendite ADD COLUMN IF NOT EXISTS nuove_notizie BOOLEAN DEFAULT FALSE;
 ALTER TABLE vendite ADD COLUMN IF NOT EXISTS ultimo_mittente TEXT;
 
--- 2. Importante: permette al Cloud di inviare aggiornamenti istantanei per ogni riga
+-- 2. Aggiunge le colonne per la verifica amministrativa dei pagamenti
+ALTER TABLE vendite ADD COLUMN IF NOT EXISTS verificare_pagamento BOOLEAN DEFAULT FALSE;
+ALTER TABLE vendite ADD COLUMN IF NOT EXISTS pagamento_verificato BOOLEAN DEFAULT FALSE;
+
+-- 3. Importante: permette al Cloud di inviare aggiornamenti istantanei
 ALTER TABLE vendite REPLICA IDENTITY FULL;
 
--- 3. Se non hai ancora le tabelle, ecco lo schema completo:
+-- 4. Schema completo per nuove installazioni:
 CREATE TABLE IF NOT EXISTS vendite (
   id TEXT PRIMARY KEY,
   data DATE DEFAULT CURRENT_DATE,
@@ -39,6 +43,8 @@ CREATE TABLE IF NOT EXISTS vendite (
   agente TEXT,
   operatore_email TEXT,
   incassato BOOLEAN DEFAULT FALSE,
+  verificare_pagamento BOOLEAN DEFAULT FALSE,
+  pagamento_verificato BOOLEAN DEFAULT FALSE,
   note_amministrazione TEXT,
   notizie TEXT,
   nuove_notizie BOOLEAN DEFAULT FALSE,

@@ -134,7 +134,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ operatori, onLogin, onConfigC
 
         <div className="text-center mb-10">
           <img src={BRAND_LOGO_DATA} alt="Logo" className="w-20 h-20 mx-auto mb-6 shadow-2xl rounded-3xl" />
-          <h1 className="text-4xl font-black text-white tracking-tighter uppercase">SalesManager</h1>
+          <h1 className="text-4xl font-black text-white tracking-tighter leading-tight">Lagicart SalesManager</h1>
           <p className="text-slate-400 mt-2 font-medium">Accesso Team</p>
         </div>
 
@@ -252,7 +252,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ operatori, onLogin, onConfigC
       {/* Modal Configurazione Database */}
       {showConfig && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[300] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95">
+          <div className="bg-white rounded-[2rem] w-full max-sm overflow-hidden shadow-2xl animate-in zoom-in-95">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <Server className="w-5 h-5 text-[#32964D]" />

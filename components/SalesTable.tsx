@@ -1,20 +1,21 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { Clock, X, Printer, Camera, MessageSquare, Send, CheckCircle2, UserCheck, Smartphone, ShieldAlert, Check, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { Clock, X, Printer, Camera, MessageSquare, Send, CheckCircle2, UserCheck, Smartphone, ShieldAlert, Check, Pencil, Trash2, RotateCcw, AlertTriangle, ThumbsUp } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
   metodiDisponibili: string[];
   isAdmin: boolean;
   onIncasso: (id: string) => void;
+  onVerifyPayment: (id: string) => void;
   onEdit: (v: Vendita) => void;
   onDelete: (id: string) => void;
   onUpdateNotizie?: (id: string, notizia: string, nuoveNotizie: boolean, mittente: string) => void;
   currentUserNome?: string;
 }
 
-const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isAdmin, onIncasso, onEdit, onDelete, onUpdateNotizie, currentUserNome }) => {
+const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isAdmin, onIncasso, onVerifyPayment, onEdit, onDelete, onUpdateNotizie, currentUserNome }) => {
   const [filters, setFilters] = useState({
     cliente: '', agente: '', data: '', status: 'all' as 'all' | 'incassato' | 'pendente'
   });
@@ -78,7 +79,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   return (
     <div className="space-y-4">
-      {/* Receipt Modal (OTTIMIZZATA PER CELLULARE E SCREENSHOT) */}
+      {/* Receipt Modal */}
       {selectedReceipt && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[300] flex items-center justify-center p-4 no-print animate-in fade-in duration-300">
           <button onClick={() => setSelectedReceipt(null)} className="absolute top-6 right-6 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-all"><X className="w-8 h-8" /></button>
@@ -109,11 +110,18 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 <h1 className={`text-5xl font-black tracking-tighter ${selectedReceipt.incassato ? 'text-[#32964D]' : 'text-slate-900'}`}>
                   € {selectedReceipt.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}
                 </h1>
-                {selectedReceipt.sconto && (
-                  <div className="inline-flex items-center gap-2 mt-4 px-4 py-1.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200">
-                    Sconto: {selectedReceipt.sconto}
-                  </div>
-                )}
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                  {selectedReceipt.sconto && (
+                    <div className="px-4 py-1.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200">
+                      Sconto: {selectedReceipt.sconto}
+                    </div>
+                  )}
+                  {selectedReceipt.pagamentoVerificato && (
+                    <div className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-200 flex items-center gap-1.5">
+                      <ThumbsUp className="w-3 h-3" /> Pagamento Verificato
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -142,7 +150,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                     <Smartphone className="w-3.5 h-3.5 text-slate-400" />
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ref: {selectedReceipt.id}</span>
                  </div>
-                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] block">Sincronizzato Cloud ● SalesManager</p>
+                 <p className="text-[8px] font-black text-slate-300 block tracking-widest">Sincronizzato Cloud ● Lagicart SalesManager</p>
               </div>
             </div>
           </div>
@@ -226,6 +234,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Data</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cliente / Agente</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Chat</th>
+                <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Verifica</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Stato / GG</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Importo</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right no-print">Azioni</th>
@@ -241,7 +250,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                     <td className="px-6 py-5 text-xs font-black text-slate-400">{new Date(v.data).toLocaleDateString('it-IT')}</td>
                     <td className="px-6 py-5">
                       <div className="font-black text-slate-900 truncate max-w-[200px] uppercase leading-none tracking-tighter text-sm mb-1">{v.cliente}</div>
-                      <div className="text-[10px] font-black text-[#32964D] uppercase tracking-widest opacity-70">{v.agente}</div>
+                      <div className="text-[10px] font-black text-[#32964D] uppercase tracking-widest opacity-70 leading-tight">{v.agente}</div>
                     </td>
                     <td className="px-6 py-5 text-center">
                       <button 
@@ -251,6 +260,27 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                         <MessageSquare className={`w-5 h-5 ${hasUnread ? 'animate-pulse' : ''}`} />
                         {hasUnread && <span className="absolute -top-2 -right-2 w-5 h-5 bg-rose-500 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white">!</span>}
                       </button>
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                       {v.verificarePagamento ? (
+                         v.pagamentoVerificato ? (
+                            <div className="flex justify-center">
+                               <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl" title="Pagamento Verificato - Merce OK">
+                                  <ThumbsUp className="w-5 h-5" />
+                               </div>
+                            </div>
+                         ) : (
+                            <div className="flex justify-center">
+                               <button 
+                                  onClick={() => isAdmin && onVerifyPayment(v.id)}
+                                  className={`p-2.5 ${isAdmin ? 'bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white' : 'bg-slate-100 text-slate-400 cursor-default'} rounded-xl transition-all`}
+                                  title={isAdmin ? "Clicca per confermare verifica pagamento" : "Pagamento da verificare (Solo Admin)"}
+                               >
+                                  <AlertTriangle className="w-5 h-5 animate-pulse" />
+                               </button>
+                            </div>
+                         )
+                       ) : <span className="text-[10px] font-black text-slate-200 uppercase">-</span>}
                     </td>
                     <td className="px-6 py-5 text-center">
                       {v.incassato ? (

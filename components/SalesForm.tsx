@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Vendita, Agente } from '../types';
-import { X, Send, UserCheck, Plus, Euro, Percent, CreditCard } from 'lucide-react';
+import { X, Send, UserCheck, Plus, Euro, Percent, CreditCard, ShieldAlert } from 'lucide-react';
 
 interface SalesFormProps {
   onClose: () => void;
@@ -20,7 +20,8 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
     metodoPagamento: metodiDisponibili[0] || '',
     sconto: '',
     agente: '',
-    incassato: false
+    incassato: false,
+    verificarePagamento: false
   });
 
   useEffect(() => {
@@ -31,7 +32,8 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
         metodoPagamento: initialData.metodoPagamento,
         sconto: initialData.sconto,
         agente: initialData.agente,
-        incassato: initialData.incassato
+        incassato: initialData.incassato,
+        verificarePagamento: initialData.verificarePagamento || false
       });
     } else if (availableAgentList.length === 1) {
       setFormData(f => ({ ...f, agente: availableAgentList[0].nome }));
@@ -115,6 +117,18 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+           <input 
+              type="checkbox" id="verify-check" 
+              className="w-5 h-5 accent-amber-500 cursor-pointer" 
+              checked={formData.verificarePagamento} 
+              onChange={e => setFormData(f => ({...f, verificarePagamento: e.target.checked}))} 
+           />
+           <label htmlFor="verify-check" className="flex items-center gap-2 text-xs font-black uppercase text-slate-600 cursor-pointer">
+              <ShieldAlert className="w-4 h-4 text-amber-500" /> Verificare Pagamento
+           </label>
         </div>
 
         {isAdmin && initialData && (

@@ -26,6 +26,8 @@ export interface Vendita {
   agente: string;
   operatoreEmail: string;
   incassato: boolean;
+  verificarePagamento?: boolean;
+  pagamentoVerificato?: boolean;
   noteAmministrazione: string;
   notizie?: string;
   nuove_notizie?: boolean;

@@ -18,7 +18,12 @@ CREATE TABLE IF NOT EXISTS vendite (
   agente TEXT,
   operatore_email TEXT,
   incassato BOOLEAN DEFAULT FALSE,
+  verificare_pagamento BOOLEAN DEFAULT FALSE,
+  pagamento_verificato BOOLEAN DEFAULT FALSE,
   note_amministrazione TEXT,
+  notizie TEXT,
+  nuove_notizie BOOLEAN DEFAULT FALSE,
+  ultimo_mittente TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 

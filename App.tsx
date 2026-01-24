@@ -40,7 +40,7 @@ const App: React.FC = () => {
     
     if (type === 'notification' && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        new Notification("SalesManager", {
+        new Notification("Lagicart SalesManager", {
           body: message,
           icon: BRAND_LOGO_DATA,
         });
@@ -130,6 +130,8 @@ const App: React.FC = () => {
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
           operatoreEmail: d.operatore_email.toLowerCase(),
           incassato: d.incassato, 
+          verificarePagamento: d.verificare_pagamento,
+          pagamentoVerificato: d.pagamento_verificato,
           noteAmministrazione: d.note_amministrazione || '',
           notizie: d.notizie || '',
           nuove_notizie: d.nuove_notizie || false,
@@ -199,9 +201,13 @@ const App: React.FC = () => {
         payload.operatore_email = data.operatoreEmail.toLowerCase();
         payload.note_amministrazione = data.noteAmministrazione;
         payload.ultimo_mittente = data.ultimo_mittente;
+        payload.verificare_pagamento = data.verificarePagamento;
+        payload.pagamento_verificato = data.pagamentoVerificato;
         delete payload.metodoPagamento;
         delete payload.operatoreEmail;
         delete payload.noteAmministrazione;
+        delete payload.verificarePagamento;
+        delete payload.pagamentoVerificato;
       }
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
@@ -247,7 +253,7 @@ const App: React.FC = () => {
         <div className="p-6">
           <div className="flex items-center gap-4 mb-10">
             <img src={BRAND_LOGO_DATA} alt="Logo" className="w-11 h-11" />
-            <h1 className="text-xl font-bold tracking-tight">SalesManager</h1>
+            <h1 className="text-xl font-bold tracking-tight">Lagicart SalesManager</h1>
           </div>
           <nav className="space-y-1.5">
             <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><TrendingUp className="w-5 h-5" /><span className="font-medium">Dashboard</span></button>
@@ -290,6 +296,14 @@ const App: React.FC = () => {
                   await syncToCloud('vendite', updated);
                   addToast(`Incasso confermato`, 'success');
                 }} 
+                onVerifyPayment={async (id) => {
+                   const target = vendite.find(v => v.id === id);
+                   if (!target) return;
+                   const updated = { ...target, pagamentoVerificato: true };
+                   setVendite(vendite.map(v => v.id === id ? updated : v));
+                   await syncToCloud('vendite', updated);
+                   addToast(`Pagamento verificato - Via libera merce`, 'success');
+                }}
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
                 onUpdateNotizie={async (id, notizia, nuoveNotizie, mittente) => {
                    const target = vendite.find(v => v.id === id);

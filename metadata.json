@@ -1,5 +1,5 @@
 {
-  "name": "Sales & Collections Manager",
+  "name": "Lagicart SalesManager",
   "description": "A secure application for managing sales, payments, and collections for a team of agents with row-level security and administrative controls.",
   "requestFramePermissions": []
 }
