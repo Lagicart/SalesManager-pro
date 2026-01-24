@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { CheckCircle, Clock, Calendar, Search, Filter, RotateCcw, Pencil, Trash2, ChevronDown, Check, Download, Printer, User, Copy, ArrowUp, ArrowDown, X, Smartphone, Image as ImageIcon, Camera, MessageSquare, Send, UserCircle, CheckCircle2 } from 'lucide-react';
+import { CheckCircle, Clock, Calendar, Search, Filter, RotateCcw, Pencil, Trash2, ChevronDown, Check, Download, Printer, User, Copy, ArrowUp, ArrowDown, X, Smartphone, Image as ImageIcon, Camera, MessageSquare, Send, UserCircle, CheckCircle2, DollarSign, UserCheck } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -34,6 +34,15 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   const resetFilters = () => {
     setFilters({ cliente: '', agente: '', data: '', status: 'all' });
+  };
+
+  const calculateDaysPending = (dateStr: string) => {
+    const start = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    start.setHours(0, 0, 0, 0);
+    const diffTime = Math.abs(today.getTime() - start.getTime());
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
   };
 
   const filteredData = useMemo(() => {
@@ -70,33 +79,68 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   return (
     <div className="space-y-4">
-      {/* Receipt Modal (Anteprima) */}
+      {/* Receipt Modal (Ricevuta Completa per Screenshot) */}
       {selectedReceipt && (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[300] flex items-center justify-center p-6 no-print animate-in fade-in duration-300">
-          <button onClick={() => setSelectedReceipt(null)} className="absolute top-6 right-6 bg-white/10 hover:bg-white/20 text-white p-3 rounded-2xl transition-all"><X className="w-6 h-6" /></button>
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden border-[12px] border-emerald-50 text-center p-10 space-y-8">
-            <div className={`p-6 -m-10 mb-6 flex flex-col items-center ${selectedReceipt.incassato ? 'bg-[#32964D]' : 'bg-orange-500'}`}>
-              <Camera className="w-10 h-10 text-white mb-2" />
-              <h4 className="text-white text-xs font-black uppercase tracking-widest">
-                {selectedReceipt.incassato ? 'Ricevuta Incasso Confermata' : 'Anteprima Pratica Pendente'}
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[300] flex items-center justify-center p-4 no-print animate-in fade-in duration-300">
+          <button onClick={() => setSelectedReceipt(null)} className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-3 rounded-2xl transition-all"><X className="w-6 h-6" /></button>
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden text-center p-8 space-y-6 border-[8px] border-emerald-50">
+            
+            <div className={`p-4 -m-8 mb-4 flex flex-col items-center ${selectedReceipt.incassato ? 'bg-[#32964D]' : 'bg-amber-600'}`}>
+              <div className="bg-white/20 p-2 rounded-xl mb-2"><Printer className="w-6 h-6 text-white" /></div>
+              <h4 className="text-white text-[10px] font-black uppercase tracking-[0.2em]">
+                {selectedReceipt.incassato ? 'Conferma di Incasso' : 'Proposta di Vendita'}
               </h4>
+              <p className="text-white/60 text-[8px] font-bold">ID: {selectedReceipt.id}</p>
             </div>
+
             <div className="space-y-1">
               <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Cliente</p>
-              <h2 className="text-3xl font-black text-slate-900 uppercase leading-none">{selectedReceipt.cliente}</h2>
+              <h2 className="text-2xl font-black text-slate-900 uppercase leading-tight">{selectedReceipt.cliente}</h2>
             </div>
-            <div className="bg-slate-50 rounded-3xl p-8 border border-slate-100">
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Importo</p>
-              <h1 className={`text-5xl font-black tracking-tighter ${selectedReceipt.incassato ? 'text-[#32964D]' : 'text-slate-900'}`}>
+
+            <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100 shadow-inner">
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Importo Totale</p>
+              <h1 className={`text-4xl font-black tracking-tighter ${selectedReceipt.incassato ? 'text-[#32964D]' : 'text-slate-900'}`}>
                 € {selectedReceipt.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}
               </h1>
             </div>
-            {selectedReceipt.noteAmministrazione && (
-              <div className="bg-emerald-900 text-white p-4 rounded-2xl">
-                 <p className="text-[10px] font-black uppercase tracking-widest opacity-50">Amministrazione</p>
-                 <p className="font-bold">{selectedReceipt.noteAmministrazione}</p>
+
+            <div className="grid grid-cols-2 gap-4 text-left">
+              <div className="bg-slate-50/50 p-3 rounded-2xl">
+                <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Data</p>
+                <p className="text-xs font-bold text-slate-700">{new Date(selectedReceipt.data).toLocaleDateString('it-IT')}</p>
+              </div>
+              <div className="bg-slate-50/50 p-3 rounded-2xl">
+                <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Metodo</p>
+                <p className="text-xs font-bold text-slate-700">{selectedReceipt.metodoPagamento}</p>
+              </div>
+              <div className="bg-slate-50/50 p-3 rounded-2xl">
+                <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Agente</p>
+                <p className="text-xs font-bold text-slate-700">{selectedReceipt.agente}</p>
+              </div>
+              <div className="bg-slate-50/50 p-3 rounded-2xl">
+                <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Sconto</p>
+                <p className="text-xs font-bold text-slate-700">{selectedReceipt.sconto || '0%'}</p>
+              </div>
+            </div>
+
+            {(selectedReceipt.noteAmministrazione || !selectedReceipt.incassato) && (
+              <div className={`p-4 rounded-2xl text-left ${selectedReceipt.incassato ? 'bg-emerald-900 text-white' : 'bg-amber-100 border border-amber-200 text-amber-900'}`}>
+                <p className="text-[8px] font-black uppercase tracking-widest opacity-50 mb-1">
+                  {selectedReceipt.incassato ? 'Note Amministrative' : 'Stato Pratica'}
+                </p>
+                <p className="text-xs font-bold leading-relaxed">
+                  {selectedReceipt.incassato 
+                    ? (selectedReceipt.noteAmministrazione || "Pratica evasa correttamente.") 
+                    : `In attesa di incasso da ${calculateDaysPending(selectedReceipt.data)} giorni.`
+                  }
+                </p>
               </div>
             )}
+
+            <div className="pt-4 border-t border-slate-100 opacity-30">
+               <p className="text-[8px] font-black uppercase tracking-widest">Generato da SalesManager Cloud</p>
+            </div>
           </div>
         </div>
       )}
@@ -186,6 +230,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
             <tbody className="divide-y divide-slate-100">
               {filteredData.map((v) => {
                 const hasUnread = v.nuove_notizie && v.ultimo_mittente !== currentUserNome;
+                const days = calculateDaysPending(v.data);
 
                 return (
                   <tr key={v.id} className={`hover:bg-slate-50/80 transition-colors ${v.incassato ? 'bg-emerald-50/30' : ''}`}>
@@ -209,9 +254,12 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                           <CheckCircle2 className="w-3 h-3" /> Incassato
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-orange-200 animate-pulse">
-                          <Clock className="w-3 h-3" /> Pendente
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 ${days > 7 ? 'bg-rose-100 text-rose-700 border-rose-200' : 'bg-orange-100 text-orange-700 border-orange-200'} rounded-full text-[10px] font-black uppercase tracking-widest border animate-pulse`}>
+                            <Clock className="w-3 h-3" /> Pendente
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Da {days}gg</span>
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-4">
@@ -228,9 +276,9 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                             <CheckCircle2 className="w-5 h-5" />
                           </button>
                         )}
-                        <button onClick={() => setSelectedReceipt(v)} className="p-2.5 text-slate-300 hover:text-[#32964D] hover:bg-slate-100 rounded-xl transition-all" title="Anteprima Ricevuta"><Camera className="w-5 h-5" /></button>
-                        <button onClick={() => onEdit(v)} className="p-2.5 text-slate-300 hover:text-amber-500 hover:bg-slate-100 rounded-xl transition-all"><Pencil className="w-4 h-4" /></button>
-                        {isAdmin && <button onClick={() => onDelete(v.id)} className="p-2.5 text-slate-300 hover:text-rose-500 hover:bg-slate-100 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>}
+                        <button onClick={() => setSelectedReceipt(v)} className="p-2.5 text-slate-300 hover:text-[#32964D] hover:bg-slate-100 rounded-xl transition-all" title="Genera Ricevuta (Camera)"><Camera className="w-5 h-5" /></button>
+                        <button onClick={() => onEdit(v)} className="p-2.5 text-slate-300 hover:text-amber-500 hover:bg-slate-100 rounded-xl transition-all" title="Modifica"><Pencil className="w-4 h-4" /></button>
+                        {isAdmin && <button onClick={() => onDelete(v.id)} className="p-2.5 text-slate-300 hover:text-rose-500 hover:bg-slate-100 rounded-xl transition-all" title="Elimina"><Trash2 className="w-4 h-4" /></button>}
                       </div>
                     </td>
                   </tr>

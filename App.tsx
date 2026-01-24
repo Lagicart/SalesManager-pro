@@ -130,7 +130,7 @@ const App: React.FC = () => {
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
           operatoreEmail: d.operatore_email.toLowerCase(),
           incassato: d.incassato, 
-          noteAmministrazione: d.note_amministrazione,
+          noteAmministrazione: d.note_amministrazione || '',
           notizie: d.notizie || '',
           nuove_notizie: d.nuove_notizie || false,
           ultimo_mittente: d.ultimo_mittente || '',
@@ -277,7 +277,7 @@ const App: React.FC = () => {
                 onIncasso={async (id) => {
                   const target = vendite.find(v => v.id === id);
                   if (!target) return;
-                  const updated = {...target, incassato: true, noteAmministrazione: 'OK MARILENA'};
+                  const updated = {...target, incassato: true }; // Rimosso hardcoded 'OK MARILENA'
                   setVendite(vendite.map(v => v.id === id ? updated : v));
                   await syncToCloud('vendite', updated);
                   addToast(`Incasso confermato`, 'success');
