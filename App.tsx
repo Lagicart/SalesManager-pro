@@ -31,7 +31,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Funzione stabilizzata per garantire l'admin
+  // Garantisce che l'admin esista sempre
   const ensureAdmin = useCallback((list: Operatore[]): Operatore[] => {
     const hasAdmin = list.find(o => o.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
     if (!hasAdmin) {
@@ -93,7 +93,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     
     const now = Date.now();
-    if (!force && now - lastFetchRef.current < 3000) return; // Aumentato debounce a 3s
+    if (!force && now - lastFetchRef.current < 4000) return; 
     lastFetchRef.current = now;
 
     setIsSyncing(true);
@@ -129,13 +129,13 @@ const App: React.FC = () => {
         });
       }
 
-      if (oRes.data) {
+      if (oRes.data && oRes.data.length > 0) {
         const cloudData: Operatore[] = ensureAdmin(oRes.data as Operatore[]);
         setOperatori(prev => {
-          // Merge basato su EMAIL per sicurezza maggiore sugli operatori
           const cloudEmails = new Set(cloudData.map(d => d.email.toLowerCase()));
           const onlyLocal = prev.filter(p => !cloudEmails.has(p.email.toLowerCase()));
-          return [...cloudData, ...onlyLocal];
+          const result = [...cloudData, ...onlyLocal];
+          return ensureAdmin(result);
         });
       }
     } catch (e) {
@@ -202,7 +202,6 @@ const App: React.FC = () => {
       if (error) throw error;
     } catch (e) {
       console.error(`Errore sync ${table}:`, e);
-      // Non blocchiamo l'utente, i dati rimangono in locale
     }
   };
 
@@ -213,10 +212,10 @@ const App: React.FC = () => {
       for (const op of operatori) await syncToCloud('operatori', op);
       for (const ag of agenti) await syncToCloud('agenti', ag);
       for (const ve of vendite) await syncToCloud('vendite', ve);
-      alert("Sincronizzazione forzata completata!");
+      alert("Dati sincronizzati con successo!");
       fetchData(true);
     } catch (e) {
-      alert("Errore caricamento.");
+      alert("Errore durante la sincronizzazione.");
     } finally {
       setIsSyncing(false);
     }
@@ -364,9 +363,9 @@ const App: React.FC = () => {
                   <div className="bg-emerald-900 p-6 rounded-3xl text-white shadow-xl flex items-center justify-between">
                     <div>
                       <h4 className="font-bold flex items-center gap-2 text-emerald-400">
-                        <UploadCloud className="w-5 h-5" /> Strumenti Emergenza Cloud
+                        <UploadCloud className="w-5 h-5" /> Sincronizzazione Forzata Cloud
                       </h4>
-                      <p className="text-xs text-emerald-100/70 mt-1">Sincronizza forzatamente i dati locali se vedi discrepanze.</p>
+                      <p className="text-xs text-emerald-100/70 mt-1">Carica tutti i dati locali sul server se noti incongruenze.</p>
                     </div>
                     <button 
                       onClick={forcePushAllToCloud}
