@@ -19,7 +19,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const sqlCode = `-- 1. CREAZIONE TABELLE (Eseguire se non esistono)
+  const sqlCode = `-- 1. CREAZIONE TABELLE
 CREATE TABLE IF NOT EXISTS vendite (
   id TEXT PRIMARY KEY,
   data DATE DEFAULT CURRENT_DATE,
@@ -50,13 +50,17 @@ CREATE TABLE IF NOT EXISTS operatori (
   role TEXT
 );
 
--- 2. SICUREZZA (Permette all'app di scrivere i dati)
+-- 2. DISABILITA RLS (Cruciale per permettere il login senza autenticazione Supabase Auth)
 ALTER TABLE vendite DISABLE ROW LEVEL SECURITY;
 ALTER TABLE agenti DISABLE ROW LEVEL SECURITY;
 ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;
 
--- 3. REALTIME (Sincronizzazione istantanea tra PC)
--- Usiamo SET invece di ADD per evitare l'errore "already member" (42710)
+-- 3. PERMESSI PUBBLICI (Per sicurezza extra nel caso RLS rimanga attivo)
+GRANT ALL ON TABLE vendite TO anon;
+GRANT ALL ON TABLE agenti TO anon;
+GRANT ALL ON TABLE operatori TO anon;
+
+-- 4. REALTIME
 DO $$ 
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -101,14 +105,14 @@ END $$;`;
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-900">Configurazione Cloud Supabase</h3>
-              <p className="text-slate-500 text-sm">Sincronizza i dati in tempo reale su tutti i dispositivi dell'ufficio.</p>
+              <p className="text-slate-500 text-sm">Sincronizza i dati in tempo reale tra tutti i PC.</p>
             </div>
           </div>
           <button 
             onClick={() => setShowHelp(!showHelp)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${showHelp ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
-            <HelpCircle className="w-4 h-4" /> {showHelp ? 'Nascondi Guida' : 'Guida SQL'}
+            <HelpCircle className="w-4 h-4" /> {showHelp ? 'Nascondi Guida' : 'Mostra Script SQL'}
           </button>
         </div>
 
@@ -117,18 +121,9 @@ END $$;`;
             <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs">
               <AlertTriangle className="w-5 h-5 flex-shrink-0" />
               <p>
-                <strong>Nota per Errore 42710:</strong> Se hai visto l'errore "relation already member of publication", ignora pure: significa che il database era già configurato correttamente. Lo script qui sotto ora usa un comando più "intelligente" per evitare il messaggio.
+                <strong>Attenzione:</strong> Se non riesci ad accedere con nuovi utenti, assicurati di aver eseguito lo script SQL qui sotto nel terminale di Supabase. Rimuove le restrizioni di lettura (RLS) che bloccano il login.
               </p>
             </div>
-            
-            <h4 className="font-bold text-white flex items-center gap-2 italic">
-              Passaggi in Supabase:
-            </h4>
-            <ol className="text-xs list-decimal ml-4 space-y-2">
-              <li>Vai su <strong>SQL Editor</strong> nel menu a sinistra di Supabase.</li>
-              <li>Clicca su <strong>New Query</strong>.</li>
-              <li>Incolla il codice qui sotto e clicca su <strong>RUN</strong>.</li>
-            </ol>
             
             <div className="mt-4 relative">
               <button onClick={copySql} className="absolute right-4 top-4 flex items-center gap-1.5 text-[10px] font-bold text-[#32964D] hover:text-white transition-colors bg-white/5 px-2 py-1 rounded">
@@ -144,7 +139,7 @@ END $$;`;
         <form onSubmit={handleSaveDb} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">URL Progetto (da API Settings)</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">Project URL</label>
               <input 
                 type="text"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
@@ -154,11 +149,11 @@ END $$;`;
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">Chiave API anon (da API Settings)</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">API Anon Key</label>
               <input 
                 type="password"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
-                placeholder="Inserisci la chiave anon public"
+                placeholder="eyJ..."
                 value={tempKey}
                 onChange={e => setTempKey(e.target.value)}
               />
