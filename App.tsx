@@ -31,21 +31,23 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const ensureAdmin = (list: Operatore[]): Operatore[] => {
+  // Funzione stabilizzata per garantire l'admin
+  const ensureAdmin = useCallback((list: Operatore[]): Operatore[] => {
     const hasAdmin = list.find(o => o.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
     if (!hasAdmin) {
       const adminOp: Operatore = { id: 'op-admin', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' };
       return [adminOp, ...list];
     }
     return list;
-  };
+  }, []);
 
   const [operatori, setOperatori] = useState<Operatore[]>(() => {
     const saved = localStorage.getItem('sm_operatori');
     const defaultOps: Operatore[] = [{ id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' }];
     if (saved) {
       try {
-        return ensureAdmin(JSON.parse(saved) as Operatore[]);
+        const parsed = JSON.parse(saved) as Operatore[];
+        return Array.isArray(parsed) ? ensureAdmin(parsed) : defaultOps;
       } catch {
         return defaultOps;
       }
@@ -90,9 +92,8 @@ const App: React.FC = () => {
   const fetchData = useCallback(async (force = false) => {
     if (!supabase) return;
     
-    // Evitiamo fetch troppo frequenti (max 1 ogni 2 secondi) a meno che non sia forzato
     const now = Date.now();
-    if (!force && now - lastFetchRef.current < 2000) return;
+    if (!force && now - lastFetchRef.current < 3000) return; // Aumentato debounce a 3s
     lastFetchRef.current = now;
 
     setIsSyncing(true);
@@ -104,12 +105,11 @@ const App: React.FC = () => {
       ]);
 
       if (vRes.data) {
-        const cloudData = vRes.data.map(d => ({
+        const cloudData: Vendita[] = vRes.data.map(d => ({
           id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
           operatoreEmail: d.operatore_email, incassato: d.incassato, noteAmministrazione: d.note_amministrazione
         }));
-        // Merge: mantieni locali se non in cloud
         setVendite(prev => {
           const cloudIds = new Set(cloudData.map(d => d.id));
           const onlyLocal = prev.filter(p => !cloudIds.has(p.id));
@@ -118,7 +118,7 @@ const App: React.FC = () => {
       }
       
       if (aRes.data) {
-        const cloudData = aRes.data.map(d => ({ 
+        const cloudData: Agente[] = aRes.data.map(d => ({ 
           id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email,
           telefono: d.telefono, zona: d.zona
         }));
@@ -130,21 +130,20 @@ const App: React.FC = () => {
       }
 
       if (oRes.data) {
-        const cloudData = ensureAdmin(oRes.data as Operatore[]);
+        const cloudData: Operatore[] = ensureAdmin(oRes.data as Operatore[]);
         setOperatori(prev => {
-          const cloudIds = new Set(cloudData.map(d => d.id));
-          const onlyLocal = prev.filter(p => !cloudIds.has(p.id));
+          // Merge basato su EMAIL per sicurezza maggiore sugli operatori
+          const cloudEmails = new Set(cloudData.map(d => d.email.toLowerCase()));
+          const onlyLocal = prev.filter(p => !cloudEmails.has(p.email.toLowerCase()));
           return [...cloudData, ...onlyLocal];
         });
       }
-      setCloudStatus('connected');
     } catch (e) {
       console.error("Errore fetch Cloud:", e);
-      setCloudStatus('error');
     } finally {
       setIsSyncing(false);
     }
-  }, [supabase]);
+  }, [supabase, ensureAdmin]);
 
   useEffect(() => {
     if (supabase) {
@@ -200,14 +199,10 @@ const App: React.FC = () => {
         delete payload.operatoreEmail;
       }
       const { error } = await supabase.from(table).upsert(payload);
-      if (error) {
-        if (error.code === '23505') {
-          alert(`Errore: L'email "${data.email}" è già presente con un altro ID.`);
-        }
-        throw error;
-      }
+      if (error) throw error;
     } catch (e) {
       console.error(`Errore sync ${table}:`, e);
+      // Non blocchiamo l'utente, i dati rimangono in locale
     }
   };
 
@@ -218,10 +213,10 @@ const App: React.FC = () => {
       for (const op of operatori) await syncToCloud('operatori', op);
       for (const ag of agenti) await syncToCloud('agenti', ag);
       for (const ve of vendite) await syncToCloud('vendite', ve);
-      alert("Tutti i dati locali sono stati caricati nel Cloud!");
+      alert("Sincronizzazione forzata completata!");
       fetchData(true);
     } catch (e) {
-      alert("Errore durante l'upload massivo.");
+      alert("Errore caricamento.");
     } finally {
       setIsSyncing(false);
     }
@@ -360,13 +355,13 @@ const App: React.FC = () => {
                       <h4 className="font-bold flex items-center gap-2 text-emerald-400">
                         <UploadCloud className="w-5 h-5" /> Strumenti Emergenza Cloud
                       </h4>
-                      <p className="text-xs text-emerald-100/70 mt-1">Usa questo tasto solo se vedi che il Cloud ha perso dei dati che hai sul PC.</p>
+                      <p className="text-xs text-emerald-100/70 mt-1">Sincronizza forzatamente i dati locali se vedi discrepanze.</p>
                     </div>
                     <button 
                       onClick={forcePushAllToCloud}
                       className="bg-white/10 hover:bg-white/20 px-6 py-2.5 rounded-xl font-bold text-sm border border-white/10 transition-all active:scale-95"
                     >
-                      Carica Dati Locali su Cloud
+                      Sincronizza Ora
                     </button>
                   </div>
                 )}
