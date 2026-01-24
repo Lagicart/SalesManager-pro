@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, Database } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -14,7 +13,6 @@ import SettingsManager from './components/SettingsManager';
 const BRAND_LOGO_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2332964D'/%3E%3Cpath d='M30 70 L70 30 M45 30 L70 30 L70 55' stroke='white' stroke-width='12' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
 
 const App: React.FC = () => {
-  // Configurazione Database Cloud
   const [dbConfig, setDbConfig] = useState<{url: string, key: string} | null>(() => {
     const saved = localStorage.getItem('sm_db_config');
     return saved ? JSON.parse(saved) : null;
@@ -22,14 +20,20 @@ const App: React.FC = () => {
 
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'connected' | 'error' | 'none'>('none');
 
-  // Inizializzazione Client Supabase
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
-      const client = createClient(dbConfig.url, dbConfig.key);
-      setSupabase(client);
+      try {
+        const client = createClient(dbConfig.url, dbConfig.key);
+        setSupabase(client);
+        setCloudStatus('connected');
+      } catch (e) {
+        setCloudStatus('error');
+      }
     } else {
       setSupabase(null);
+      setCloudStatus('none');
     }
   }, [dbConfig]);
 
@@ -44,16 +48,12 @@ const App: React.FC = () => {
 
   const [metodiPagamento, setMetodiPagamento] = useState<string[]>(() => {
     const saved = localStorage.getItem('sm_metodi');
-    return saved ? JSON.parse(saved) : ['Bonifico', 'Rimessa Diretta', 'Bonifico Anticipato'];
+    return saved ? JSON.parse(saved) : ['Bonifico', 'Rimessa Diretta', 'Bonifico Anticipato', 'Assegno', 'Contanti'];
   });
 
   const [currentUser, setCurrentUser] = useState<Operatore>(operatori[0]);
+  const [vendite, setVendite] = useState<Vendita[]>([]);
   
-  const [vendite, setVendite] = useState<Vendita[]>(() => {
-    const saved = localStorage.getItem('sm_vendite');
-    return saved ? JSON.parse(saved) : [];
-  });
-
   const [agenti, setAgenti] = useState<Agente[]>(() => {
     const saved = localStorage.getItem('sm_agenti');
     return saved ? JSON.parse(saved) : [
@@ -67,21 +67,22 @@ const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings'>('dashboard');
   const [notifications, setNotifications] = useState<{msg: string, type: 'info' | 'success'}[]>([]);
 
-  // Sincronizzazione Realtime da Supabase verso l'App
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      const saved = localStorage.getItem('sm_vendite');
+      if (saved) setVendite(JSON.parse(saved));
+      return;
+    }
 
-    // Caricamento iniziale
     const fetchData = async () => {
       setIsSyncing(true);
       const { data, error } = await supabase.from('vendite').select('*').order('data', { ascending: false });
       if (!error && data) {
-        // Mapping nomi colonne DB a proprietà oggetto JS
         const mappedData: Vendita[] = data.map(d => ({
           id: d.id,
           data: d.data,
           cliente: d.cliente,
-          importo: d.importo,
+          importo: Number(d.importo),
           metodoPagamento: d.metodo_pagamento,
           sconto: d.sconto,
           agente: d.agente,
@@ -90,24 +91,24 @@ const App: React.FC = () => {
           noteAmministrazione: d.note_amministrazione
         }));
         setVendite(mappedData);
+        localStorage.setItem('sm_vendite', JSON.stringify(mappedData));
+      } else if (error) {
+        setCloudStatus('error');
       }
       setIsSyncing(false);
     };
 
     fetchData();
 
-    // Sottoscrizione ai cambiamenti (Realtime)
     const channel = supabase.channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, (payload) => {
-        fetchData(); // Ricarica tutto per semplicità quando c'è un cambio
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => {
+        fetchData();
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [supabase]);
 
-  // Salvataggio Locale (Sempre attivo)
-  useEffect(() => { localStorage.setItem('sm_vendite', JSON.stringify(vendite)); }, [vendite]);
   useEffect(() => { localStorage.setItem('sm_operatori', JSON.stringify(operatori)); }, [operatori]);
   useEffect(() => { localStorage.setItem('sm_agenti', JSON.stringify(agenti)); }, [agenti]);
   useEffect(() => { localStorage.setItem('sm_metodi', JSON.stringify(metodiPagamento)); }, [metodiPagamento]);
@@ -167,9 +168,8 @@ const App: React.FC = () => {
       addNotification(`Registrato: ${newVendita.cliente}`, 'success');
     }
     setIsFormOpen(false);
-    
-    // Invia al Cloud se configurato
     if (supabase) await syncToCloud(newVendita);
+    else localStorage.setItem('sm_vendite', JSON.stringify([newVendita, ...vendite]));
   };
 
   const deleteVendita = async (id: string) => {
@@ -237,9 +237,13 @@ const App: React.FC = () => {
         <div className="mt-auto p-6 border-t border-white/10">
           <UserSwitcher currentUser={currentUser} operatori={operatori} onSwitch={setCurrentUser} />
           <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-2">
-             {supabase ? (
+             {cloudStatus === 'connected' ? (
                <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
                  <Cloud className="w-3 h-3" /> Database Cloud Attivo
+               </div>
+             ) : cloudStatus === 'error' ? (
+               <div className="flex items-center gap-2 text-rose-500 text-[10px] font-bold uppercase tracking-widest">
+                 <Database className="w-3 h-3" /> Errore Cloud! Controlla chiavi
                </div>
              ) : (
                <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
@@ -302,7 +306,6 @@ const App: React.FC = () => {
                     setAgenti(data.agenti || []);
                     setOperatori(data.operatori || []);
                     setMetodiPagamento(data.metodi || []);
-                    // Invia tutto al cloud se connesso
                     if (supabase && data.vendite) {
                        data.vendite.forEach((v: Vendita) => syncToCloud(v));
                     }
