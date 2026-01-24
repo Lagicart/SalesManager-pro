@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, Database } from 'lucide-react';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -30,26 +30,44 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Funzione per garantire che l'admin sia sempre presente - Fixed type annotation to return Operatore[]
+  const ensureAdmin = (list: Operatore[]): Operatore[] => {
+    const hasAdmin = list.find(o => o.email === ADMIN_EMAIL);
+    if (!hasAdmin) {
+      const adminOp: Operatore = { id: 'op-admin', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' };
+      return [adminOp, ...list];
+    }
+    return list;
+  };
+
+  // Fixed initialization to ensure defaultOps and parsed data match Operatore[] type
   const [operatori, setOperatori] = useState<Operatore[]>(() => {
     const saved = localStorage.getItem('sm_operatori');
-    const defaultOps = [
-      { id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' },
-      { id: 'op2', nome: 'Marco Operatore 1', email: 'agente1@example.com', role: 'agent', password: '123' }
-    ];
+    const defaultOps: Operatore[] = [{ id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' }];
     if (saved) {
-      const parsed = JSON.parse(saved);
-      const combined = [...parsed];
-      defaultOps.forEach(d => {
-        if (!combined.find(o => o.email === d.email)) combined.push(d);
-      });
-      return combined;
+      try {
+        return ensureAdmin(JSON.parse(saved) as Operatore[]);
+      } catch {
+        return defaultOps;
+      }
     }
     return defaultOps;
   });
 
-  const [vendite, setVendite] = useState<Vendita[]>([]);
-  const [agenti, setAgenti] = useState<Agente[]>([]);
-  const [metodiPagamento, setMetodiPagamento] = useState<string[]>(['Bonifico', 'Rimessa Diretta', 'Assegno', 'Contanti']);
+  const [vendite, setVendite] = useState<Vendita[]>(() => {
+    const saved = localStorage.getItem('sm_vendite');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const [agenti, setAgenti] = useState<Agente[]>(() => {
+    const saved = localStorage.getItem('sm_agenti');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [metodiPagamento, setMetodiPagamento] = useState<string[]>(() => {
+    const saved = localStorage.getItem('sm_metodi');
+    return saved ? JSON.parse(saved) : ['Bonifico', 'Rimessa Diretta', 'Assegno', 'Contanti'];
+  });
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
@@ -70,66 +88,64 @@ const App: React.FC = () => {
     }
   }, [dbConfig]);
 
+  const fetchData = useCallback(async () => {
+    if (!supabase) return;
+
+    setIsSyncing(true);
+    try {
+      const [vRes, aRes, oRes] = await Promise.all([
+        supabase.from('vendite').select('*').order('data', { ascending: false }),
+        supabase.from('agenti').select('*'),
+        supabase.from('operatori').select('*')
+      ]);
+
+      if (vRes.data) {
+        const fetched = vRes.data.map(d => ({
+          id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
+          metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
+          operatoreEmail: d.operatore_email, incassato: d.incassato, noteAmministrazione: d.note_amministrazione
+        }));
+        // Se il cloud ha dati, usiamo quelli. Se è vuoto, manteniamo i locali per sicurezza.
+        if (fetched.length > 0) setVendite(fetched);
+      }
+      
+      if (aRes.data) {
+        const fetched = aRes.data.map(d => ({ 
+          id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email,
+          telefono: d.telefono, zona: d.zona
+        }));
+        if (fetched.length > 0) setAgenti(fetched);
+      }
+
+      // Fixed type casting for oRes.data to satisfy ensureAdmin parameter
+      if (oRes.data) {
+        const fetched = ensureAdmin(oRes.data as Operatore[]);
+        if (fetched.length > 0) setOperatori(fetched);
+      }
+    } catch (e) {
+      console.error("Errore fetch Cloud:", e);
+      setCloudStatus('error');
+    }
+    setIsSyncing(false);
+  }, [supabase, ensureAdmin]);
+
   useEffect(() => {
-    const fetchData = async () => {
-      if (!supabase) {
-        const savedVendite = localStorage.getItem('sm_vendite');
-        const savedAgenti = localStorage.getItem('sm_agenti');
-        const savedMetodi = localStorage.getItem('sm_metodi');
-        const savedOps = localStorage.getItem('sm_operatori');
-        
-        if (savedVendite) setVendite(JSON.parse(savedVendite));
-        if (savedAgenti) setAgenti(JSON.parse(savedAgenti));
-        if (savedMetodi) setMetodiPagamento(JSON.parse(savedMetodi));
-        if (savedOps) setOperatori(JSON.parse(savedOps));
-        return;
-      }
-
-      setIsSyncing(true);
-      try {
-        const [vRes, aRes, oRes] = await Promise.all([
-          supabase.from('vendite').select('*').order('data', { ascending: false }),
-          supabase.from('agenti').select('*'),
-          supabase.from('operatori').select('*')
-        ]);
-
-        if (vRes.data) {
-          setVendite(vRes.data.map(d => ({
-            id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
-            metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
-            operatoreEmail: d.operatore_email, incassato: d.incassato, noteAmministrazione: d.note_amministrazione
-          })));
-        }
-        if (aRes.data) {
-          setAgenti(aRes.data.map(d => ({ 
-            id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email,
-            telefono: d.telefono, zona: d.zona
-          })));
-        }
-        if (oRes.data && oRes.data.length > 0) {
-          setOperatori(oRes.data);
-        }
-      } catch (e) {
-        console.error("Errore fetch Cloud:", e);
-        setCloudStatus('error');
-      }
-      setIsSyncing(false);
-    };
-
-    fetchData();
-
     if (supabase) {
+      fetchData();
       const vSub = supabase.channel('v-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData()).subscribe();
       const oSub = supabase.channel('o-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData()).subscribe();
       const aSub = supabase.channel('a-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData()).subscribe();
       return () => { supabase.removeChannel(vSub); supabase.removeChannel(oSub); supabase.removeChannel(aSub); };
     }
-  }, [supabase]);
+  }, [supabase, fetchData]);
 
+  // Persistenza locale sempre attiva come backup
   useEffect(() => { localStorage.setItem('sm_vendite', JSON.stringify(vendite)); }, [vendite]);
   useEffect(() => { localStorage.setItem('sm_agenti', JSON.stringify(agenti)); }, [agenti]);
   useEffect(() => { localStorage.setItem('sm_operatori', JSON.stringify(operatori)); }, [operatori]);
   useEffect(() => { localStorage.setItem('sm_metodi', JSON.stringify(metodiPagamento)); }, [metodiPagamento]);
+  useEffect(() => { localStorage.setItem('sm_db_config', JSON.stringify(dbConfig)); }, [dbConfig]);
+  
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('sm_current_user', JSON.stringify(currentUser));
@@ -151,22 +167,9 @@ const App: React.FC = () => {
     setView('dashboard');
   };
 
-  const filteredVendite = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.role === 'admin') return vendite;
-    return vendite.filter(v => v.operatoreEmail === currentUser.email);
-  }, [vendite, currentUser]);
-
-  const filteredAgenti = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.role === 'admin') return agenti;
-    return agenti.filter(a => a.operatoreEmail === currentUser.email);
-  }, [agenti, currentUser]);
-
   const syncToCloud = async (table: string, data: any) => {
     if (!supabase) return;
     try {
-      // Mapping dei nomi colonne per Supabase (snake_case)
       const payload = { ...data };
       if (table === 'vendite') {
         payload.metodo_pagamento = data.metodoPagamento;
@@ -180,11 +183,40 @@ const App: React.FC = () => {
         payload.operatore_email = data.operatoreEmail;
         delete payload.operatoreEmail;
       }
-      await supabase.from(table).upsert(payload);
+      const { error } = await supabase.from(table).upsert(payload);
+      if (error) throw error;
     } catch (e) {
       console.error(`Errore sync ${table}:`, e);
     }
   };
+
+  const forcePushAllToCloud = async () => {
+    if (!supabase) return;
+    setIsSyncing(true);
+    try {
+      // Carichiamo tutto ciò che abbiamo in locale nel Cloud
+      for (const op of operatori) await syncToCloud('operatori', op);
+      for (const ag of agenti) await syncToCloud('agenti', ag);
+      for (const ve of vendite) await syncToCloud('vendite', ve);
+      alert("Tutti i dati locali sono stati caricati nel Cloud!");
+      fetchData();
+    } catch (e) {
+      alert("Errore durante l'upload massivo.");
+    }
+    setIsSyncing(false);
+  };
+
+  const filteredVendite = useMemo(() => {
+    if (!currentUser) return [];
+    if (currentUser.role === 'admin') return vendite;
+    return vendite.filter(v => v.operatoreEmail === currentUser.email);
+  }, [vendite, currentUser]);
+
+  const filteredAgenti = useMemo(() => {
+    if (!currentUser) return [];
+    if (currentUser.role === 'admin') return agenti;
+    return agenti.filter(a => a.operatoreEmail === currentUser.email);
+  }, [agenti, currentUser]);
 
   if (!isLoggedIn || !currentUser) {
     return <LoginScreen operatori={operatori} onLogin={handleLogin} />;
@@ -229,14 +261,19 @@ const App: React.FC = () => {
         
         <div className="mt-auto p-6 border-t border-white/10">
           <UserSwitcher currentUser={currentUser} onLogout={handleLogout} />
-          <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-2">
+          <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2">
              {cloudStatus === 'connected' ? (
                <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
-                 <Cloud className="w-3 h-3" /> Cloud Attivo
+                 <Cloud className="w-3 h-3" /> Cloud Sincronizzato
                </div>
              ) : (
                <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
-                 <CloudOff className="w-3 h-3" /> Locale
+                 <CloudOff className="w-3 h-3" /> Solo Locale (Backup ON)
+               </div>
+             )}
+             {isSyncing && (
+               <div className="flex items-center gap-2 text-emerald-400 text-[9px] animate-pulse">
+                 <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Aggiornamento in corso...
                </div>
              )}
           </div>
@@ -251,7 +288,6 @@ const App: React.FC = () => {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-             {isSyncing && <RefreshCw className="w-4 h-4 text-[#32964D] animate-spin" />}
              {view === 'list' && (
               <button onClick={() => { setEditingVendita(null); setIsFormOpen(true); }} className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-lg transition-all active:scale-95">
                 <Plus className="w-5 h-5" /> Nuova Vendita
@@ -271,11 +307,7 @@ const App: React.FC = () => {
                   const updated = vendite.map(v => v.id === id ? {...v, incassato: true, noteAmministrazione: 'OK MARILENA'} : v);
                   setVendite(updated);
                   const target = updated.find(v => v.id === id);
-                  if (target) await syncToCloud('vendite', {
-                    ...target,
-                    incassato: true,
-                    noteAmministrazione: 'OK MARILENA'
-                  });
+                  if (target) await syncToCloud('vendite', target);
                 }} 
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
                 onDelete={async (id) => {
@@ -296,15 +328,34 @@ const App: React.FC = () => {
               const updated = operatori.find(x => x.id === o.id) 
                 ? operatori.map(x => x.id === o.id ? o : x)
                 : [...operatori, o];
-              setOperatori(updated);
+              // Result of ensureAdmin(updated) is now explicitly typed as Operatore[]
+              setOperatori(ensureAdmin(updated));
               await syncToCloud('operatori', o);
             }} />}
             {view === 'settings' && (
-              <SettingsManager 
-                metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} 
-                data={{vendite, agenti, operatori, metodi: metodiPagamento}} onImport={(d) => setVendite(d.vendite || [])}
-                dbConfig={dbConfig} onDbConfigChange={setDbConfig}
-              />
+              <div className="space-y-8">
+                {currentUser.role === 'admin' && cloudStatus === 'connected' && (
+                  <div className="bg-emerald-900 p-6 rounded-3xl text-white shadow-xl flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold flex items-center gap-2 text-emerald-400">
+                        <UploadCloud className="w-5 h-5" /> Strumenti Emergenza Cloud
+                      </h4>
+                      <p className="text-xs text-emerald-100/70 mt-1">Usa questo tasto solo se vedi che il Cloud ha perso dei dati che hai sul PC.</p>
+                    </div>
+                    <button 
+                      onClick={forcePushAllToCloud}
+                      className="bg-white/10 hover:bg-white/20 px-6 py-2.5 rounded-xl font-bold text-sm border border-white/10 transition-all active:scale-95"
+                    >
+                      Carica Dati Locali su Cloud
+                    </button>
+                  </div>
+                )}
+                <SettingsManager 
+                  metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} 
+                  data={{vendite, agenti, operatori, metodi: metodiPagamento}} onImport={(d) => setVendite(d.vendite || [])}
+                  dbConfig={dbConfig} onDbConfigChange={setDbConfig}
+                />
+              </div>
             )}
           </div>
         </section>
