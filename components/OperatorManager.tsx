@@ -1,16 +1,18 @@
 
 import React, { useState } from 'react';
 import { Operatore, ADMIN_EMAIL } from '../types';
-import { UserPlus, Shield, Key, Mail, X, Save, User, Trash2, Pencil } from 'lucide-react';
+import { UserPlus, Shield, Key, Mail, X, Save, User, Trash2, Pencil, CloudUpload, RefreshCw } from 'lucide-react';
 
 interface OperatorManagerProps {
   operatori: Operatore[];
   onUpdate: (op: Operatore) => void;
   onDelete: (id: string) => void;
+  onForceCloudSync?: () => Promise<void>;
 }
 
-const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate, onDelete }) => {
+const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate, onDelete, onForceCloudSync }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [editingOp, setEditingOp] = useState<Operatore | null>(null);
   const [formData, setFormData] = useState<Omit<Operatore, 'id'>>({
     nome: '',
@@ -30,6 +32,19 @@ const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate, 
     setIsModalOpen(true);
   };
 
+  const handleSync = async () => {
+    if (!onForceCloudSync) return;
+    setIsSyncing(true);
+    try {
+      await onForceCloudSync();
+      alert("Lista operatori sincronizzata con il Cloud!");
+    } catch (e) {
+      alert("Errore durante la sincronizzazione.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleAddNew = () => {
     setEditingOp(null);
     setFormData({ nome: '', email: '', password: '', role: 'agent' });
@@ -47,11 +62,11 @@ const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate, 
 
   const handleDelete = (op: Operatore) => {
     if (op.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-      alert("L'account amministratore principale non può essere eliminato per motivi di sicurezza.");
+      alert("L'account amministratore principale non può essere eliminato.");
       return;
     }
 
-    if (window.confirm(`Sei sicuro di voler eliminare definitivamente l'account di ${op.nome}? Questa azione non può essere annullata.`)) {
+    if (window.confirm(`Eliminare definitivamente l'account di ${op.nome}?`)) {
       onDelete(op.id);
     }
   };
@@ -59,17 +74,28 @@ const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate, 
   return (
     <div className="space-y-6">
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h3 className="text-xl font-bold text-slate-900">Gestione Account Operatori</h3>
-            <p className="text-slate-500 text-sm mt-1">Configura gli accessi e assegna i permessi amministrativi.</p>
+            <p className="text-slate-500 text-sm mt-1">Configura gli accessi per il team.</p>
           </div>
-          <button 
-            onClick={handleAddNew}
-            className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-[#2b7e41] transition-all shadow-lg active:scale-95"
-          >
-            <UserPlus className="w-4 h-4" /> Crea Nuovo Account
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="bg-emerald-50 text-[#32964D] px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-200 active:scale-95 disabled:opacity-50"
+              title="Invia tutti gli account presenti su questo PC al database online"
+            >
+              {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
+              Sincronizza con Cloud
+            </button>
+            <button 
+              onClick={handleAddNew}
+              className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-[#2b7e41] transition-all shadow-lg active:scale-95"
+            >
+              <UserPlus className="w-4 h-4" /> Nuovo Account
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -87,7 +113,7 @@ const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate, 
                 <tr key={op.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${op.role === 'admin' ? 'bg-amber-100 text-amber-600 shadow-sm shadow-amber-200' : 'bg-emerald-50 text-[#32964D]'}`}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${op.role === 'admin' ? 'bg-amber-100 text-amber-600 shadow-sm' : 'bg-emerald-50 text-[#32964D]'}`}>
                         {op.nome.charAt(0)}
                       </div>
                       <span className="font-bold text-slate-800">{op.nome}</span>
@@ -105,14 +131,12 @@ const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate, 
                       <button 
                         onClick={() => handleEdit(op)}
                         className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all border border-transparent hover:border-amber-200"
-                        title="Modifica Account"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => handleDelete(op)}
                         className={`p-2 rounded-lg transition-all border border-transparent ${op.email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'text-slate-200 cursor-not-allowed' : 'text-rose-600 hover:bg-rose-50 hover:border-rose-200'}`}
-                        title="Elimina Account"
                         disabled={op.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()}
                       >
                         <Trash2 className="w-4 h-4" />

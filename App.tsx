@@ -31,7 +31,6 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Garantisce che l'admin esista sempre
   const ensureAdmin = useCallback((list: Operatore[]): Operatore[] => {
     const hasAdmin = list.find(o => o.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
     if (!hasAdmin) {
@@ -221,6 +220,12 @@ const App: React.FC = () => {
     }
   };
 
+  const forcePushOperatoriOnly = async () => {
+    if (!supabase) return;
+    for (const op of operatori) await syncToCloud('operatori', op);
+    await fetchData(true);
+  };
+
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === 'admin') return vendite;
@@ -356,6 +361,7 @@ const App: React.FC = () => {
                   if (error) console.error("Errore eliminazione operatore:", error);
                 }
               }}
+              onForceCloudSync={forcePushOperatoriOnly}
             />}
             {view === 'settings' && (
               <div className="space-y-8">
