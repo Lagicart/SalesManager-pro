@@ -61,7 +61,6 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   const handleOpenChat = (v: Vendita) => {
     setActiveChat(v);
-    // Corrected typo: changed v.nuowe_notizie to v.nuove_notizie
     if (v.nuove_notizie && v.ultimo_mittente !== currentUserNome && onUpdateNotizie) {
       onUpdateNotizie(v.id, v.notizie || '', false, v.ultimo_mittente || '');
     }

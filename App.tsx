@@ -209,6 +209,14 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); }
   };
 
+  // AGENTI FILTRATI PER PRIVACY
+  const filteredAgenti = useMemo(() => {
+    if (!currentUser) return [];
+    if (currentUser.role === 'admin' && !viewAsEmail) return agenti;
+    const targetEmail = (viewAsEmail || currentUser.email).toLowerCase();
+    return agenti.filter(a => a.operatoreEmail.toLowerCase() === targetEmail);
+  }, [agenti, currentUser, viewAsEmail]);
+
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
     let list = [...vendite];
@@ -277,7 +285,7 @@ const App: React.FC = () => {
                 onIncasso={async (id) => {
                   const target = vendite.find(v => v.id === id);
                   if (!target) return;
-                  const updated = {...target, incassato: true }; // Rimosso hardcoded 'OK MARILENA'
+                  const updated = {...target, incassato: true };
                   setVendite(vendite.map(v => v.id === id ? updated : v));
                   await syncToCloud('vendite', updated);
                   addToast(`Incasso confermato`, 'success');
@@ -300,10 +308,18 @@ const App: React.FC = () => {
               />
             )}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
-            {view === 'agents' && <AgentManager agenti={agenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} currentUser={currentUser} onUpdate={async (a) => {
-              setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]);
-              await syncToCloud('agenti', a);
-            }} />}
+            {view === 'agents' && (
+              <AgentManager 
+                agenti={filteredAgenti} 
+                operatori={operatori} 
+                isAdmin={currentUser.role === 'admin'} 
+                currentUser={currentUser} 
+                onUpdate={async (a) => {
+                  setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]);
+                  await syncToCloud('agenti', a);
+                }} 
+              />
+            )}
             {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => {
               setOperatori(ensureAdmin(operatori.find(x => x.id === o.id) ? operatori.map(x => x.id === o.id ? o : x) : [...operatori, o]));
               await syncToCloud('operatori', o);
@@ -334,8 +350,11 @@ const App: React.FC = () => {
               await syncToCloud('vendite', newV);
               addToast(editingVendita ? "Aggiornato" : "Registrato", "success");
             }} 
-            userEmail={viewAsEmail || currentUser.email} availableAgentList={agenti} metodiDisponibili={metodiPagamento}
-            initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'}
+            userEmail={viewAsEmail || currentUser.email} 
+            availableAgentList={filteredAgenti} 
+            metodiDisponibili={metodiPagamento}
+            initialData={editingVendita || undefined} 
+            isAdmin={currentUser.role === 'admin'}
           />
         </div>
       )}
