@@ -60,11 +60,17 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
       return matchCliente && matchAgente && matchData && matchMetodo && matchStatus && matchNote;
     });
 
-    // Ordinamento migliorato: usa created_at per distinguere pratiche della stessa giornata
+    // Ordinamento Millimetrico
     return list.sort((a, b) => {
-      const dateA = new Date(a.created_at || a.data).getTime();
-      const dateB = new Date(b.created_at || b.data).getTime();
-      return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+      const timeA = new Date(a.created_at || a.data).getTime();
+      const timeB = new Date(b.created_at || b.data).getTime();
+      
+      if (timeA === timeB) {
+        // Fallback su ID se il timestamp è identico
+        return sortDirection === 'asc' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id);
+      }
+      
+      return sortDirection === 'asc' ? timeA - timeB : timeB - timeA;
     });
   }, [vendite, filters, sortDirection]);
 
@@ -93,16 +99,60 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   return (
     <div className="space-y-4">
-      {/* Pannello Filtri ... (omesso per brevità, rimane lo stesso) */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 filter-panel no-print">
-        {/* ... contenuti filtri ... */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
            <div className="flex items-center gap-2 text-slate-800 font-bold">
             <Filter className="w-4 h-4 text-[#32964D]" />
-            <span>Filtri e Ricerca</span>
+            <span>Filtri e Ricerca Avanzata</span>
           </div>
           <button onClick={resetFilters} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${hasActiveFilters ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'}`}>
               <RotateCcw className="w-3.5 h-3.5" /> Reset Filtri
+          </button>
+        </div>
+        
+        {/* Griglia Campi Filtro */}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+          <input 
+            type="text" placeholder="Cliente..."
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20"
+            value={filters.cliente}
+            onChange={e => setFilters({...filters, cliente: e.target.value})}
+          />
+          <input 
+            type="text" placeholder="Agente..."
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20"
+            value={filters.agente}
+            onChange={e => setFilters({...filters, agente: e.target.value})}
+          />
+          <input 
+            type="date"
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20"
+            value={filters.data}
+            onChange={e => setFilters({...filters, data: e.target.value})}
+          />
+          <select 
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
+            value={filters.status}
+            onChange={e => setFilters({...filters, status: e.target.value as any})}
+          >
+            <option value="all">Tutti gli Stati</option>
+            <option value="incassato">Solo Incassati</option>
+            <option value="pendente">Solo Pendenti</option>
+          </select>
+          <select 
+            className="px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-sm font-bold text-[#32964D] outline-none"
+            value={filters.noteType}
+            onChange={e => setFilters({...filters, noteType: e.target.value as any})}
+          >
+            <option value="all">Tutte le Note</option>
+            <option value="ok-marilena">Solo OK MARILENA</option>
+            <option value="empty">Senza Note</option>
+          </select>
+          <button 
+            onClick={() => setIsMetodoDropdownOpen(!isMetodoDropdownOpen)}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600 font-medium flex justify-between items-center"
+          >
+            Metodo <ChevronDown className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -118,11 +168,11 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 >
                   <div className="flex items-center gap-2">
                     Data 
-                    <div className="flex flex-col">
+                    <div className="bg-[#32964D]/10 p-1 rounded">
                       {sortDirection === 'desc' ? (
-                        <ArrowDown className="w-3 h-3 text-[#32964D]" />
+                        <ArrowDown className="w-3.5 h-3.5 text-[#32964D]" />
                       ) : (
-                        <ArrowUp className="w-3 h-3 text-[#32964D]" />
+                        <ArrowUp className="w-3.5 h-3.5 text-[#32964D]" />
                       )}
                     </div>
                   </div>
@@ -142,7 +192,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold text-slate-900">{v.cliente}</span>
-                      <button onClick={() => copyRowData(v)} className="no-print p-1.5 text-slate-300 hover:text-[#32964D] rounded-lg">
+                      <button onClick={() => copyRowData(v)} className="no-print p-1 text-slate-300 hover:text-[#32964D] rounded">
                         <Copy className="w-3.5 h-3.5" />
                       </button>
                     </div>

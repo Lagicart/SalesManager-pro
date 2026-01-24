@@ -19,7 +19,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const sqlCode = `-- AGGIORNAMENTO STRUTTURA PER ORDINAMENTO PRECISO
+  const sqlCode = `-- 1. STRUTTURA TABELLE CON TIMESTAMP PRECISO
 CREATE TABLE IF NOT EXISTS vendite (
   id TEXT PRIMARY KEY,
   data DATE DEFAULT CURRENT_DATE,
@@ -31,10 +31,10 @@ CREATE TABLE IF NOT EXISTS vendite (
   operatore_email TEXT,
   incassato BOOLEAN DEFAULT FALSE,
   note_amministrazione TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) -- CAMPO FONDAMENTALE
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- AGGIUNGI COLONNA SE MANCA (per chi ha già la tabella)
+-- AGGIUNGI created_at SE MANCA
 ALTER TABLE vendite ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
 
 CREATE TABLE IF NOT EXISTS agenti (
@@ -62,7 +62,13 @@ CREATE TABLE IF NOT EXISTS notifiche (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- DISABILITA RLS E PERMESSI
+-- 2. IDENTITÀ DI REPLICA FULL (FONDAMENTALE PER REALTIME)
+ALTER TABLE vendite REPLICA IDENTITY FULL;
+ALTER TABLE agenti REPLICA IDENTITY FULL;
+ALTER TABLE operatori REPLICA IDENTITY FULL;
+ALTER TABLE notifiche REPLICA IDENTITY FULL;
+
+-- 3. DISABILITA RLS PER FACILITARE SYNC UFFICIO
 ALTER TABLE vendite DISABLE ROW LEVEL SECURITY;
 ALTER TABLE agenti DISABLE ROW LEVEL SECURITY;
 ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;
@@ -73,7 +79,7 @@ GRANT ALL ON TABLE agenti TO anon;
 GRANT ALL ON TABLE operatori TO anon;
 GRANT ALL ON TABLE notifiche TO anon;
 
--- ATTIVA REALTIME
+-- 4. ATTIVA PUBBLICAZIONE REALTIME
 DO $$ 
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -99,7 +105,7 @@ END $$;`;
   const handleSaveDb = (e: React.FormEvent) => {
     e.preventDefault();
     onDbConfigChange(tempUrl && tempKey ? { url: tempUrl, key: tempKey } : null);
-    alert("Configurazione Cloud salvata con successo!");
+    alert("Cloud configurato correttamente. Notifiche attive!");
   };
 
   return (
@@ -111,7 +117,7 @@ END $$;`;
             <div className="bg-[#32964D] p-2.5 rounded-xl text-white shadow-lg">
               <Server className="w-5 h-5" />
             </div>
-            <h3 className="text-xl font-bold text-slate-900">Database Realtime</h3>
+            <h3 className="text-xl font-bold text-slate-900">Database & Notifiche Realtime</h3>
           </div>
           <button onClick={() => setShowHelp(!showHelp)} className="text-xs font-bold bg-slate-100 px-4 py-2 rounded-xl text-slate-600">
             {showHelp ? 'Nascondi SQL' : 'Mostra Script SQL'}
@@ -122,13 +128,13 @@ END $$;`;
           <div className="mb-8 p-6 bg-slate-900 rounded-2xl text-slate-300 space-y-4">
             <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs">
               <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-              <p>Copia questo script e incollalo nell'SQL Editor di Supabase. Risolverà i problemi di ordinamento e notifiche.</p>
+              <p>Copia questo script aggiornato e incollalo nell'SQL Editor di Supabase. Attiva la funzione "Replica Identity FULL" che è indispensabile per le notifiche istantanee.</p>
             </div>
             <div className="relative">
               <button onClick={copySql} className="absolute right-4 top-4 text-[10px] font-bold text-[#32964D] bg-white/5 px-2 py-1 rounded">
                 {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               </button>
-              <pre className="bg-slate-950 p-4 rounded-xl text-[10px] font-mono overflow-x-auto text-emerald-400 h-48">{sqlCode}</pre>
+              <pre className="bg-slate-950 p-4 rounded-xl text-[10px] font-mono overflow-x-auto text-emerald-400 h-48 leading-relaxed">{sqlCode}</pre>
             </div>
           </div>
         )}
@@ -149,7 +155,7 @@ END $$;`;
               onChange={e => setTempKey(e.target.value)}
             />
           </div>
-          <button type="submit" className="bg-[#32964D] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg">Salva Configurazione</button>
+          <button type="submit" className="bg-[#32964D] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">Collega PC e Attiva Notifiche</button>
         </form>
       </div>
 

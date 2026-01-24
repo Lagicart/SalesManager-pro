@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud, Clock, BookOpen, CheckCircle2, XCircle, Bell } from 'lucide-react';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud, Clock, BookOpen, CheckCircle2, XCircle, Bell, BellRing } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -33,13 +33,33 @@ const App: React.FC = () => {
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const lastFetchRef = useRef<number>(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
 
   const addToast = (message: string, type: 'success' | 'error' | 'info' | 'notification' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
+    
+    // Notifica Desktop Nativa
+    if (type === 'notification' && Notification.permission === 'granted') {
+      new Notification("SalesManager", {
+        body: message,
+        icon: BRAND_LOGO_DATA
+      });
+    }
+
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 5000);
+    }, 8000);
+  };
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      setNotifPermission(permission);
+      if (permission === 'granted') {
+        addToast("Notifiche desktop attivate con successo!", "info");
+      }
+    }
   };
 
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('sm_is_logged_in') === 'true');
@@ -107,6 +127,12 @@ const App: React.FC = () => {
     }
   }, [dbConfig]);
 
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotifPermission(Notification.permission);
+    }
+  }, []);
+
   const fetchData = useCallback(async (force = false) => {
     if (!supabase) return;
     
@@ -126,7 +152,8 @@ const App: React.FC = () => {
         const cloudData: Vendita[] = vRes.data.map(d => ({
           id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
-          operatoreEmail: d.operatore_email, incassato: d.incassato, noteAmministrazione: d.note_amministrazione,
+          operatoreEmail: d.operatore_email.toLowerCase(),
+          incassato: d.incassato, noteAmministrazione: d.note_amministrazione,
           created_at: d.created_at
         }));
         setVendite(cloudData);
@@ -134,7 +161,7 @@ const App: React.FC = () => {
       
       if (aRes.data) {
         const cloudData: Agente[] = aRes.data.map(d => ({ 
-          id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email,
+          id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email.toLowerCase(),
           telefono: d.telefono, zona: d.zona
         }));
         setAgenti(cloudData);
@@ -152,42 +179,35 @@ const App: React.FC = () => {
     }
   }, [supabase, ensureAdmin]);
 
-  // Gestione Notifiche Realtime - Solo per l'utente loggato
+  // Sincronizzazione Realtime Unificata e Notifiche Desktop
   useEffect(() => {
     if (supabase && isLoggedIn && currentUser) {
+      const userEmail = currentUser.email.toLowerCase();
+
+      // Sottoscrizione notifiche (senza filtro lato DB per massima compatibilità)
       const nSub = supabase
-        .channel(`notifiche-${currentUser.email}`)
+        .channel('realtime-notifiche')
         .on('postgres_changes', { 
           event: 'INSERT', 
           schema: 'public', 
-          table: 'notifiche',
-          filter: `to_email=eq.${currentUser.email}`
+          table: 'notifiche' 
         }, (payload) => {
-          addToast(payload.new.message, 'notification');
+          // Filtriamo qui in Javascript per evitare problemi di casing lato DB
+          if (payload.new.to_email.toLowerCase() === userEmail) {
+            addToast(payload.new.message, 'notification');
+          }
         })
         .subscribe();
-      
-      return () => { supabase.removeChannel(nSub); };
-    }
-  }, [supabase, isLoggedIn, currentUser]);
 
-  // Sincronizzazione Realtime per tutti i dati (fondamentale per Admin)
-  useEffect(() => {
-    if (supabase && isLoggedIn) {
-      fetchData(true);
-      const vSub = supabase.channel('v-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => {
-        fetchData(true);
-      }).subscribe();
-      const oSub = supabase.channel('o-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData(true)).subscribe();
-      const aSub = supabase.channel('a-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData(true)).subscribe();
+      // Sottoscrizione aggiornamento dati automatico (Realtime Admin)
+      const vSub = supabase.channel('realtime-data').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData(true)).subscribe();
       
       return () => { 
-        supabase.removeChannel(vSub); 
-        supabase.removeChannel(oSub); 
-        supabase.removeChannel(aSub); 
+        supabase.removeChannel(nSub); 
+        supabase.removeChannel(vSub);
       };
     }
-  }, [supabase, fetchData, isLoggedIn]);
+  }, [supabase, isLoggedIn, currentUser, fetchData]);
 
   useEffect(() => { localStorage.setItem('sm_vendite', JSON.stringify(vendite)); }, [vendite]);
   useEffect(() => { localStorage.setItem('sm_agenti', JSON.stringify(agenti)); }, [agenti]);
@@ -202,7 +222,6 @@ const App: React.FC = () => {
     } else {
       localStorage.removeItem('sm_current_user');
       localStorage.setItem('sm_is_logged_in', 'false');
-      setViewAsEmail(null);
     }
   }, [currentUser]);
 
@@ -210,16 +229,15 @@ const App: React.FC = () => {
     setCurrentUser(user);
     setIsLoggedIn(true);
     addToast(`Bentornato, ${user.nome}!`, 'success');
+    // Chiediamo i permessi per le notifiche desktop appena loggati
+    requestNotificationPermission();
     setTimeout(() => fetchData(true), 500);
   };
 
   const handleLogout = () => {
-    addToast('Sessione chiusa correttamente', 'info');
     setCurrentUser(null);
     setIsLoggedIn(false);
     setView('dashboard');
-    localStorage.removeItem('sm_current_user');
-    localStorage.setItem('sm_is_logged_in', 'false');
   };
 
   const syncToCloud = async (table: string, data: any) => {
@@ -228,22 +246,18 @@ const App: React.FC = () => {
       const payload: any = { ...data };
       if (table === 'vendite') {
         payload.metodo_pagamento = data.metodoPagamento;
-        payload.operatore_email = data.operatoreEmail;
+        payload.operatore_email = data.operatoreEmail.toLowerCase();
         payload.note_amministrazione = data.noteAmministrazione;
         delete payload.metodoPagamento;
         delete payload.operatoreEmail;
         delete payload.noteAmministrazione;
-      }
-      if (table === 'agenti') {
-        payload.operatore_email = data.operatoreEmail;
-        delete payload.operatoreEmail;
       }
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
       fetchData(true);
     } catch (e) {
       console.error(`Errore sync ${table}:`, e);
-      addToast(`Errore durante il salvataggio cloud: ${table}`, 'error');
+      addToast(`Errore salvataggio Cloud`, 'error');
     }
   };
 
@@ -251,7 +265,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     try {
       await supabase.from('notifiche').insert({
-        to_email: toEmail,
+        to_email: toEmail.toLowerCase(),
         message: message,
         from_user: currentUser?.nome || 'Admin'
       });
@@ -300,7 +314,7 @@ const App: React.FC = () => {
           >
             {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : 
              toast.type === 'error' ? <XCircle className="w-5 h-5 text-rose-400" /> : 
-             toast.type === 'notification' ? <Bell className="w-5 h-5 animate-bounce" /> :
+             toast.type === 'notification' ? <BellRing className="w-5 h-5 animate-bounce" /> :
              <AlertCircle className="w-5 h-5 text-sky-400" />}
             <span className="text-sm font-bold">{toast.message}</span>
           </div>
@@ -354,28 +368,26 @@ const App: React.FC = () => {
             viewAsEmail={viewAsEmail}
             onViewAsChange={setViewAsEmail}
           />
-          <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2">
-             {cloudStatus === 'connected' ? (
-               <div className="flex flex-col gap-1">
-                 <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
-                   <Cloud className="w-3 h-3" /> Cloud Attivo
-                 </div>
-                 {lastSyncTime && (
-                   <div className="flex items-center gap-1.5 text-slate-500 text-[9px] font-medium">
-                     <Clock className="w-2.5 h-2.5" /> Ultima sync: {lastSyncTime}
-                   </div>
-                 )}
-               </div>
-             ) : (
-               <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
-                 <CloudOff className="w-3 h-3" /> Solo Locale (Offline)
-               </div>
+          <div className="mt-4 flex flex-col gap-2">
+             {notifPermission !== 'granted' && (
+               <button 
+                 onClick={requestNotificationPermission}
+                 className="flex items-center gap-2 text-amber-500 text-[10px] font-bold uppercase tracking-widest bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 hover:bg-amber-500/20 transition-all"
+               >
+                 <Bell className="w-3 h-3" /> Attiva Desktop Notifiche
+               </button>
              )}
-             {isSyncing && (
-               <div className="flex items-center gap-2 text-[#32964D] text-[9px] font-bold animate-pulse">
-                 <RefreshCw className="w-2.5 h-2.5 animate-spin" /> In Sincronia...
-               </div>
-             )}
+             <div className="flex flex-col gap-1 pt-2 border-t border-white/5">
+                {cloudStatus === 'connected' ? (
+                  <div className="flex items-center gap-2 text-emerald-400 text-[9px] font-bold uppercase tracking-widest">
+                    <Cloud className="w-3 h-3" /> Cloud Connesso
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-slate-500 text-[9px] font-bold uppercase tracking-widest">
+                    <CloudOff className="w-3 h-3" /> Offline
+                  </div>
+                )}
+             </div>
           </div>
         </div>
       </aside>
@@ -384,22 +396,13 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <div className="flex items-center gap-6">
             <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-              {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : view === 'manual' ? 'Documentazione Tecnica' : 'Operatori'}
+              {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : view === 'manual' ? 'Documentazione' : 'Operatori'}
             </h2>
             {viewAsEmail && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg shadow-sm border-dashed">
+              <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg">
                 <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-                <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Vista: {operatori.find(o => o.email === viewAsEmail)?.nome || viewAsEmail}</span>
+                <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Vista Simulatore</span>
               </div>
-            )}
-            {cloudStatus === 'connected' && view !== 'manual' && (
-              <button 
-                onClick={() => { fetchData(true); addToast("Aggiornamento dati Cloud in corso..."); }}
-                className="text-slate-400 hover:text-[#32964D] transition-colors p-2 rounded-lg hover:bg-emerald-50"
-                title="Aggiorna dati dal Cloud"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              </button>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -422,30 +425,28 @@ const App: React.FC = () => {
                   const targetVendita = vendite.find(v => v.id === id);
                   if (!targetVendita) return;
 
-                  const updated = vendite.map(v => v.id === id ? {...v, incassato: true, noteAmministrazione: 'OK MARILENA'} : v);
-                  setVendite(updated);
+                  const updatedV = {...targetVendita, incassato: true, noteAmministrazione: 'OK MARILENA'};
+                  setVendite(vendite.map(v => v.id === id ? updatedV : v));
                   
-                  await syncToCloud('vendite', {...targetVendita, incassato: true, noteAmministrazione: 'OK MARILENA'});
-                  
-                  // Notifica l'operatore proprietario della vendita
+                  await syncToCloud('vendite', updatedV);
                   await sendNotification(
                     targetVendita.operatoreEmail, 
-                    `L'amministratore ha confermato l'incasso per ${targetVendita.cliente}.`
+                    `Incasso confermato per ${targetVendita.cliente} (€${targetVendita.importo}).`
                   );
                   
-                  addToast(`Incasso confermato per ${targetVendita.cliente}`, 'success');
+                  addToast(`Incasso confermato`, 'success');
                 }} 
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
                 onDelete={async (id) => {
-                  if (window.confirm("Sei sicuro di voler eliminare questa vendita?")) {
+                  if (window.confirm("Sicuro di voler eliminare?")) {
                     setVendite(vendite.filter(v => v.id !== id));
                     if (supabase) await supabase.from('vendite').delete().eq('id', id);
-                    addToast("Vendita eliminata", "info");
+                    addToast("Eliminato", "info");
                   }
                 }}
                 onCopy={(text) => {
                   navigator.clipboard.writeText(text);
-                  addToast("Dati copiati negli appunti", "info");
+                  addToast("Copiato", "info");
                 }}
               />
             )}
@@ -458,27 +459,21 @@ const App: React.FC = () => {
                 const updated = agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti];
                 setAgenti(updated);
                 await syncToCloud('agenti', a);
-                addToast(`Profilo ${a.nome} aggiornato`, 'success');
+                addToast(`Agente aggiornato`, 'success');
               }} 
             />}
             {view === 'operators' && <OperatorManager 
               operatori={operatori} 
               onUpdate={async (o) => {
-                const updated = operatori.find(x => x.id === o.id) 
-                  ? operatori.map(x => x.id === o.id ? o : x)
-                  : [...operatori, o];
+                const updated = operatori.find(x => x.id === o.id) ? operatori.map(x => x.id === o.id ? o : x) : [...operatori, o];
                 setOperatori(ensureAdmin(updated));
                 await syncToCloud('operatori', o);
-                addToast(`Account ${o.nome} salvato`, 'success');
+                addToast(`Operatore salvato`, 'success');
               }} 
               onDelete={async (id) => {
-                const updated = operatori.filter(o => o.id !== id);
-                setOperatori(ensureAdmin(updated));
-                if (supabase) {
-                  const { error } = await supabase.from('operatori').delete().eq('id', id);
-                  if (error) console.error("Errore eliminazione operatore:", error);
-                }
-                addToast("Account operatore rimosso", "info");
+                setOperatori(ensureAdmin(operatori.filter(o => o.id !== id)));
+                if (supabase) await supabase.from('operatori').delete().eq('id', id);
+                addToast("Operatore rimosso", "info");
               }}
             />}
             {view === 'manual' && <TechnicalManual />}
@@ -498,15 +493,17 @@ const App: React.FC = () => {
           <SalesForm 
             onClose={() => setIsFormOpen(false)} 
             onSubmit={async (data) => {
-              const opEmail = viewAsEmail || currentUser.email;
+              const opEmail = (viewAsEmail || currentUser.email).toLowerCase();
               const newV = editingVendita ? { ...editingVendita, ...data } : {
                 ...data, id: Math.random().toString(36).substr(2, 9),
-                data: new Date().toISOString().split('T')[0], operatoreEmail: opEmail
+                data: new Date().toISOString().split('T')[0], 
+                operatoreEmail: opEmail,
+                created_at: new Date().toISOString()
               };
               setVendite(editingVendita ? vendite.map(v => v.id === editingVendita.id ? newV : v) : [newV, ...vendite]);
               setIsFormOpen(false);
               await syncToCloud('vendite', newV);
-              addToast(editingVendita ? "Registrazione aggiornata" : "Nuova pratica registrata", "success");
+              addToast(editingVendita ? "Aggiornato" : "Registrato", "success");
             }} 
             userEmail={viewAsEmail || currentUser.email} availableAgentList={filteredAgenti} metodiDisponibili={metodiPagamento}
             initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'}
