@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus, Trash2, CreditCard, Download, Upload, Database, Globe, HelpCircle, Copy, Check, Share2, Server, Monitor, Github, AlertCircle } from 'lucide-react';
 
@@ -20,7 +19,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
   const [copied, setCopied] = useState(false);
 
   const sqlCode = `-- 1. COPIA QUESTO CODICE
--- 2. VAI SU SUPABASE -> SQL EDITOR
+-- 2. VAI SU SUPABASE → SQL EDITOR
 -- 3. INCOLLA E PREMI "RUN"
 
 CREATE TABLE IF NOT EXISTS vendite (
@@ -85,7 +84,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE vendite;`;
               <span className="font-bold text-sm">GitHub Pages</span>
             </div>
             <p className="text-[10px] text-slate-300 leading-relaxed">
-              Gratis solo se il progetto è <strong>Pubblico</strong> (Settings -> General -> Change Visibility).
+              Gratis solo se il progetto è <strong>Pubblico</strong> (Settings → General → Change Visibility).
             </p>
           </div>
           <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
@@ -143,7 +142,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE vendite;`;
             </h4>
             <ol className="text-xs space-y-3 list-decimal ml-4">
               <li>Apri il tuo progetto su <strong>Supabase.com</strong>.</li>
-              <li>Vai in <strong>Settings (Ingranaggio)</strong> -> <strong>API</strong>.</li>
+              <li>Vai in <strong>Settings (Ingranaggio)</strong> → <strong>API</strong>.</li>
               <li>Copia <strong>Project URL</strong> e <strong>anon public key</strong> e incollali qui sotto.</li>
               <li>Vai in <strong>SQL Editor</strong>, incolla il codice sotto e premi <strong>RUN</strong>.</li>
             </ol>
