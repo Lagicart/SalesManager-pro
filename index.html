@@ -3,8 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sales Manager</title>
-    <!-- Tailwind via CDN è ok per prototipazione, Vite lo gestirà correttamente -->
+    <title>Sales Manager - Gestione Vendite e Incassi</title>
     <script src="https://cdn.tailwindcss.com"></script>
   <script type="importmap">
 {
@@ -23,7 +22,7 @@
 </head>
   <body class="bg-slate-50">
     <div id="root"></div>
-    <!-- Vite si occupa di risolvere gli import di React e Lucide, non serve l'importmap -->
-    <script type="module" src="./index.tsx"></script>
+    <!-- Vite gestisce automaticamente la trasformazione di index.tsx -->
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
