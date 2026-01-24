@@ -239,7 +239,7 @@ const App: React.FC = () => {
   }, [agenti, currentUser]);
 
   if (!isLoggedIn || !currentUser) {
-    return <LoginScreen operatori={operatori} onLogin={handleLogin} />;
+    return <LoginScreen operatori={operatori} onLogin={handleLogin} onConfigChange={setDbConfig} />;
   }
 
   return (
