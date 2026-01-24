@@ -50,23 +50,33 @@ CREATE TABLE IF NOT EXISTS operatori (
   role TEXT
 );
 
--- 2. DISABILITA RLS (Cruciale per permettere il login senza autenticazione Supabase Auth)
+CREATE TABLE IF NOT EXISTS notifiche (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  to_email TEXT,
+  message TEXT,
+  from_user TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 2. DISABILITA RLS
 ALTER TABLE vendite DISABLE ROW LEVEL SECURITY;
 ALTER TABLE agenti DISABLE ROW LEVEL SECURITY;
 ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notifiche DISABLE ROW LEVEL SECURITY;
 
--- 3. PERMESSI PUBBLICI (Per sicurezza extra nel caso RLS rimanga attivo)
+-- 3. PERMESSI PUBBLICI
 GRANT ALL ON TABLE vendite TO anon;
 GRANT ALL ON TABLE agenti TO anon;
 GRANT ALL ON TABLE operatori TO anon;
+GRANT ALL ON TABLE notifiche TO anon;
 
 -- 4. REALTIME
 DO $$ 
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    ALTER PUBLICATION supabase_realtime SET TABLE vendite, agenti, operatori;
+    ALTER PUBLICATION supabase_realtime SET TABLE vendite, agenti, operatori, notifiche;
   ELSE
-    CREATE PUBLICATION supabase_realtime FOR TABLE vendite, agenti, operatori;
+    CREATE PUBLICATION supabase_realtime FOR TABLE vendite, agenti, operatori, notifiche;
   END IF;
 END $$;`;
 
@@ -121,7 +131,7 @@ END $$;`;
             <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs">
               <AlertTriangle className="w-5 h-5 flex-shrink-0" />
               <p>
-                <strong>Attenzione:</strong> Se non riesci ad accedere con nuovi utenti, assicurati di aver eseguito lo script SQL qui sotto nel terminale di Supabase. Rimuove le restrizioni di lettura (RLS) che bloccano il login.
+                <strong>Attenzione:</strong> Copia lo script SQL aggiornato qui sotto e incollalo nell'Editor di Supabase per attivare il nuovo sistema di notifiche e l'ordinamento avanzato.
               </p>
             </div>
             

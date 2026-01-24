@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { CheckCircle, Clock, Calendar, Search, Filter, RotateCcw, Pencil, Trash2, ChevronDown, Check, Download, Printer, User } from 'lucide-react';
+import { CheckCircle, Clock, Calendar, Search, Filter, RotateCcw, Pencil, Trash2, ChevronDown, Check, Download, Printer, User, Copy, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -9,9 +10,10 @@ interface SalesTableProps {
   onIncasso: (id: string) => void;
   onEdit: (v: Vendita) => void;
   onDelete: (id: string) => void;
+  onCopy?: (text: string) => void;
 }
 
-const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isAdmin, onIncasso, onEdit, onDelete }) => {
+const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isAdmin, onIncasso, onEdit, onDelete, onCopy }) => {
   const [filters, setFilters] = useState({
     cliente: '',
     agente: '',
@@ -19,6 +21,11 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
     metodiSelezionati: [] as string[],
     status: 'all' as 'all' | 'incassato' | 'pendente',
     noteType: 'all' as 'all' | 'ok-marilena' | 'empty'
+  });
+
+  const [sortConfig, setSortConfig] = useState<{ field: 'data', direction: 'asc' | 'desc' }>({
+    field: 'data',
+    direction: 'desc' // Default: più recente in alto
   });
 
   const [isMetodoDropdownOpen, setIsMetodoDropdownOpen] = useState(false);
@@ -35,7 +42,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
   }, []);
 
   const filteredData = useMemo(() => {
-    return vendite.filter(v => {
+    let list = vendite.filter(v => {
       const matchCliente = v.cliente.toLowerCase().includes(filters.cliente.toLowerCase());
       const matchAgente = v.agente.toLowerCase().includes(filters.agente.toLowerCase());
       const matchData = filters.data ? v.data.includes(filters.data) : true;
@@ -55,7 +62,21 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
       
       return matchCliente && matchAgente && matchData && matchMetodo && matchStatus && matchNote;
     });
-  }, [vendite, filters]);
+
+    // Ordinamento
+    return list.sort((a, b) => {
+      const dateA = new Date(a.data).getTime();
+      const dateB = new Date(b.data).getTime();
+      return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+  }, [vendite, filters, sortConfig]);
+
+  const toggleSort = () => {
+    setSortConfig(prev => ({
+      field: 'data',
+      direction: prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   const toggleMetodo = (m: string) => {
     setFilters(prev => ({
@@ -75,6 +96,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
       status: 'all',
       noteType: 'all'
     });
+    setSortConfig({ field: 'data', direction: 'desc' });
   };
 
   const exportToExcel = (e: React.MouseEvent) => {
@@ -111,6 +133,11 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
     setTimeout(() => {
       window.print();
     }, 100);
+  };
+
+  const copyRowData = (v: Vendita) => {
+    const text = `PRATICA: ${v.cliente}\nIMPORTANTE: € ${v.importo.toLocaleString('it-IT')}\nDATA: ${new Date(v.data).toLocaleDateString('it-IT')}\nMETODO: ${v.metodoPagamento}\nAGENTE: ${v.agente}`;
+    onCopy?.(text);
   };
 
   const hasActiveFilters = filters.cliente || filters.agente || filters.data || filters.metodiSelezionati.length > 0 || filters.status !== 'all' || filters.noteType !== 'all';
@@ -256,7 +283,15 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data</th>
+                <th 
+                  className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer hover:text-[#32964D] transition-colors"
+                  onClick={toggleSort}
+                >
+                  <div className="flex items-center gap-2">
+                    Data
+                    {sortConfig.direction === 'desc' ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />}
+                  </div>
+                </th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cliente</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agente</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Importo</th>
@@ -269,7 +304,18 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
               {filteredData.map((v) => (
                 <tr key={v.id} className={`hover:bg-slate-50 transition-colors ${v.incassato ? 'bg-emerald-50/20' : ''}`}>
                   <td className="px-6 py-4 text-sm font-medium text-slate-500">{new Date(v.data).toLocaleDateString('it-IT')}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-slate-900">{v.cliente}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-900">{v.cliente}</span>
+                      <button 
+                        onClick={() => copyRowData(v)} 
+                        className="no-print p-1.5 text-slate-300 hover:text-[#32964D] transition-colors rounded-lg hover:bg-emerald-50"
+                        title="Copia dati pratica"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-xs font-medium text-slate-600 italic">{v.agente}</td>
                   <td className="px-6 py-4 text-sm font-black text-slate-900">€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
                   <td className="px-6 py-4"><span className="text-[10px] font-bold uppercase tracking-tight bg-slate-100 px-2 py-1 rounded-lg text-slate-600 border border-slate-200">{v.metodoPagamento}</span></td>

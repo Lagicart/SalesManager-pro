@@ -1,7 +1,8 @@
+
 import React, { useMemo } from 'react';
 import { Vendita } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { DollarSign, PieChart, TrendingUp, AlertTriangle, Clock, Calendar, Users } from 'lucide-react';
+import { DollarSign, PieChart, TrendingUp, AlertTriangle, Clock, Calendar, Users, Trophy } from 'lucide-react';
 
 interface DashboardProps {
   vendite: Vendita[];
@@ -40,6 +41,24 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
     return Object.entries(groups)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
+  }, [vendite]);
+
+  const efficiencyData = useMemo(() => {
+    const agents: Record<string, { total: number, incassato: number }> = {};
+    vendite.forEach(v => {
+      if (!agents[v.agente]) agents[v.agente] = { total: 0, incassato: 0 };
+      agents[v.agente].total += v.importo;
+      if (v.incassato) agents[v.agente].incassato += v.importo;
+    });
+
+    return Object.entries(agents)
+      .map(([name, data]) => ({
+        name,
+        total: data.total,
+        incassato: data.incassato,
+        percentage: data.total > 0 ? (data.incassato / data.total) * 100 : 0
+      }))
+      .sort((a, b) => b.percentage - a.percentage);
   }, [vendite]);
 
   const COLORS = ['#32964D', '#2d8444', '#28753c', '#1f5a2e', '#4ade80', '#166534'];
@@ -130,26 +149,39 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
       {/* GRAFICI DETTAGLIATI */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
-        {/* VOLUME PER AGENTE */}
+        {/* RANKING EFFICIENZA INCASSO */}
         <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-          <div className="flex items-center gap-2 mb-8">
-            <Users className="w-5 h-5 text-[#32964D]" />
-            <h3 className="text-lg font-bold text-slate-800">Volume Vendite per Agente</h3>
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <h3 className="text-lg font-bold text-slate-800">Efficienza Incasso Agenti</h3>
+            </div>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">% su venduto</span>
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={agentChartData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12, fontWeight: 'bold'}} width={100} />
-                <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
-                <Bar dataKey="value" radius={[0, 8, 8, 0]}>
-                  {agentChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="space-y-6">
+            {efficiencyData.slice(0, 5).map((agent, index) => (
+              <div key={agent.name} className="space-y-2">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                    <span className="w-5 h-5 bg-slate-100 rounded text-[10px] flex items-center justify-center text-slate-500">{index + 1}</span>
+                    {agent.name}
+                  </span>
+                  <span className={`text-xs font-black ${agent.percentage > 70 ? 'text-[#32964D]' : 'text-slate-500'}`}>
+                    {agent.percentage.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-1000 ${index === 0 ? 'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.3)]' : 'bg-[#32964D]'}`}
+                    style={{ width: `${agent.percentage}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[9px] font-medium text-slate-400 px-1 uppercase tracking-tight">
+                  <span>Inc: € {agent.incassato.toLocaleString()}</span>
+                  <span>Tot: € {agent.total.toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -185,7 +217,7 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
             </p>
             <div className="relative pt-2">
               <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest mb-3 text-emerald-400">
-                <span>Efficienza Incasso</span>
+                <span>Efficienza Incasso Totale</span>
                 <span>{((stats.incassato / stats.total) * 100 || 0).toFixed(1)}%</span>
               </div>
               <div className="w-full bg-white/10 h-6 rounded-full overflow-hidden border border-white/5 p-1">

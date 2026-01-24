@@ -7,7 +7,8 @@ const TechnicalManual: React.FC = () => {
     window.print();
   };
 
-  const sqlCode = `CREATE TABLE IF NOT EXISTS vendite (
+  const sqlCode = `-- TABELLE PRINCIPALI
+CREATE TABLE IF NOT EXISTS vendite (
   id TEXT PRIMARY KEY,
   data DATE DEFAULT CURRENT_DATE,
   cliente TEXT,
@@ -37,9 +38,30 @@ CREATE TABLE IF NOT EXISTS operatori (
   role TEXT
 );
 
+-- NUOVA TABELLA NOTIFICHE REALTIME
+CREATE TABLE IF NOT EXISTS notifiche (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  to_email TEXT,
+  message TEXT,
+  from_user TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- DISABILITAZIONE RLS
 ALTER TABLE vendite DISABLE ROW LEVEL SECURITY;
 ALTER TABLE agenti DISABLE ROW LEVEL SECURITY;
-ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;`;
+ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notifiche DISABLE ROW LEVEL SECURITY;
+
+-- CONFIGURAZIONE REALTIME
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    ALTER PUBLICATION supabase_realtime SET TABLE vendite, agenti, operatori, notifiche;
+  ELSE
+    CREATE PUBLICATION supabase_realtime FOR TABLE vendite, agenti, operatori, notifiche;
+  END IF;
+END $$;`;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 max-w-5xl mx-auto pb-20">
@@ -137,9 +159,9 @@ ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;`;
             </div>
             
             <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200">
-              <h4 className="font-bold text-slate-900 mb-2">Simulazione Admin ("View As")</h4>
+              <h4 className="font-bold text-slate-900 mb-2">Notifiche Realtime</h4>
               <p className="text-sm text-slate-600">
-                L'amministratore può simulare la vista di un agente tramite la variabile <code>viewAsEmail</code>. Questo filtra le tabelle <code>vendite</code> e <code>agenti</code> come se l'utente loggato fosse l'agente selezionato.
+                Il sistema utilizza il <code>postgres_changes</code> di Supabase per ascoltare la tabella <code>notifiche</code>. Quando l'Admin incassa, un record viene creato per l'operatore proprietario, scatenando un avviso visuale immediato sul suo dispositivo.
               </p>
             </div>
           </div>
@@ -165,7 +187,7 @@ ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;`;
         </section>
 
         <div className="text-center pt-10 border-t border-slate-100 opacity-50 text-[10px] uppercase font-black tracking-widest">
-          Documento generato dal Sistema di Supporto Tecnico - SalesManager v1.1 (Vercel Edition)
+          Documento generato dal Sistema di Supporto Tecnico - SalesManager v1.2 (Realtime Edition)
         </div>
       </div>
     </div>
