@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Trash2, CreditCard, Download, Upload, Database, HelpCircle, Copy, Check, Server } from 'lucide-react';
+import { Plus, Trash2, CreditCard, Download, Upload, Database, HelpCircle, Copy, Check, Server, AlertTriangle } from 'lucide-react';
 
 interface SettingsManagerProps {
   metodi: string[];
@@ -19,9 +19,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const sqlCode = `-- COPIA TUTTO QUESTO CODICE E ESEGUILO IN SUPABASE > SQL EDITOR
-
--- 1. Tabella Vendite
+  const sqlCode = `-- 1. CREAZIONE TABELLE (Eseguire se non esistono)
 CREATE TABLE IF NOT EXISTS vendite (
   id TEXT PRIMARY KEY,
   data DATE DEFAULT CURRENT_DATE,
@@ -35,7 +33,6 @@ CREATE TABLE IF NOT EXISTS vendite (
   note_amministrazione TEXT
 );
 
--- 2. Tabella Agenti (AGGIORNATA)
 CREATE TABLE IF NOT EXISTS agenti (
   id TEXT PRIMARY KEY,
   nome TEXT,
@@ -45,7 +42,6 @@ CREATE TABLE IF NOT EXISTS agenti (
   zona TEXT
 );
 
--- 3. Tabella Operatori (Account Login)
 CREATE TABLE IF NOT EXISTS operatori (
   id TEXT PRIMARY KEY,
   nome TEXT,
@@ -54,13 +50,21 @@ CREATE TABLE IF NOT EXISTS operatori (
   role TEXT
 );
 
--- Disabilita protezioni per accesso semplificato
+-- 2. SICUREZZA (Permette all'app di scrivere i dati)
 ALTER TABLE vendite DISABLE ROW LEVEL SECURITY;
 ALTER TABLE agenti DISABLE ROW LEVEL SECURITY;
 ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;
 
--- Abilita Sincronizzazione Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE vendite, agenti, operatori;`;
+-- 3. REALTIME (Sincronizzazione istantanea tra PC)
+-- Usiamo SET invece di ADD per evitare l'errore "already member" (42710)
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    ALTER PUBLICATION supabase_realtime SET TABLE vendite, agenti, operatori;
+  ELSE
+    CREATE PUBLICATION supabase_realtime FOR TABLE vendite, agenti, operatori;
+  END IF;
+END $$;`;
 
   const copySql = () => {
     navigator.clipboard.writeText(sqlCode);
@@ -96,8 +100,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE vendite, agenti, operatori;`;
               <Server className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-slate-900">Sincronizzazione Account e Dati</h3>
-              <p className="text-slate-500 text-sm">Configura Supabase per sincronizzare login e vendite in tutto l'ufficio.</p>
+              <h3 className="text-xl font-bold text-slate-900">Configurazione Cloud Supabase</h3>
+              <p className="text-slate-500 text-sm">Sincronizza i dati in tempo reale su tutti i dispositivi dell'ufficio.</p>
             </div>
           </div>
           <button 
@@ -110,10 +114,21 @@ ALTER PUBLICATION supabase_realtime ADD TABLE vendite, agenti, operatori;`;
 
         {showHelp && (
           <div className="mb-8 p-6 bg-slate-900 rounded-2xl text-slate-300 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <p>
+                <strong>Nota per Errore 42710:</strong> Se hai visto l'errore "relation already member of publication", ignora pure: significa che il database era già configurato correttamente. Lo script qui sotto ora usa un comando più "intelligente" per evitare il messaggio.
+              </p>
+            </div>
+            
             <h4 className="font-bold text-white flex items-center gap-2 italic">
-              Aggiornamento Database Necessario
+              Passaggi in Supabase:
             </h4>
-            <p className="text-xs">Per supportare i campi Telefono e Zona, devi rieseguire il codice SQL nel tuo pannello Supabase.</p>
+            <ol className="text-xs list-decimal ml-4 space-y-2">
+              <li>Vai su <strong>SQL Editor</strong> nel menu a sinistra di Supabase.</li>
+              <li>Clicca su <strong>New Query</strong>.</li>
+              <li>Incolla il codice qui sotto e clicca su <strong>RUN</strong>.</li>
+            </ol>
             
             <div className="mt-4 relative">
               <button onClick={copySql} className="absolute right-4 top-4 flex items-center gap-1.5 text-[10px] font-bold text-[#32964D] hover:text-white transition-colors bg-white/5 px-2 py-1 rounded">
@@ -129,7 +144,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE vendite, agenti, operatori;`;
         <form onSubmit={handleSaveDb} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">URL Progetto</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">URL Progetto (da API Settings)</label>
               <input 
                 type="text"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
@@ -139,7 +154,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE vendite, agenti, operatori;`;
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">Chiave API (anon)</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">Chiave API anon (da API Settings)</label>
               <input 
                 type="password"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
