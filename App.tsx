@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud, Clock } from 'lucide-react';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud, Clock, BookOpen } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -11,6 +11,7 @@ import AgentManager from './components/AgentManager';
 import OperatorManager from './components/OperatorManager';
 import SettingsManager from './components/SettingsManager';
 import LoginScreen from './components/LoginScreen';
+import TechnicalManual from './components/TechnicalManual';
 
 const BRAND_LOGO_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2332964D'/%3E%3Cpath d='M30 70 L70 30 M45 30 L70 30 L70 55' stroke='white' stroke-width='12' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
 
@@ -32,7 +33,6 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Nuova funzionalità: Admin può vedere come un altro operatore
   const [viewAsEmail, setViewAsEmail] = useState<string | null>(null);
 
   const ensureAdmin = useCallback((list: Operatore[]): Operatore[] => {
@@ -75,7 +75,7 @@ const App: React.FC = () => {
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
-  const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings' | 'manual'>('dashboard');
 
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
@@ -256,30 +256,20 @@ const App: React.FC = () => {
     }
   };
 
-  // LOGICA DI FILTRAGGIO MIGLIORATA
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
-    
-    // Se l'Admin sta "simulando" un operatore
     if (currentUser.role === 'admin' && viewAsEmail) {
       return vendite.filter(v => v.operatoreEmail.toLowerCase() === viewAsEmail.toLowerCase());
     }
-    
-    // Se è Admin (senza simulazione) vede tutto
     if (currentUser.role === 'admin') return vendite;
-    
-    // Altrimenti vede solo il suo
     return vendite.filter(v => v.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
   }, [vendite, currentUser, viewAsEmail]);
 
   const filteredAgenti = useMemo(() => {
     if (!currentUser) return [];
-    
-    // Se l'Admin sta "simulando" un operatore
     if (currentUser.role === 'admin' && viewAsEmail) {
       return agenti.filter(a => a.operatoreEmail.toLowerCase() === viewAsEmail.toLowerCase());
     }
-    
     if (currentUser.role === 'admin') return agenti;
     return agenti.filter(a => a.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
   }, [agenti, currentUser, viewAsEmail]);
@@ -315,6 +305,10 @@ const App: React.FC = () => {
                 <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
                   <Users className="w-5 h-5" />
                   <span className="font-medium">Operatori</span>
+                </button>
+                <button onClick={() => setView('manual')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'manual' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20' : 'text-slate-400 hover:text-white'}`}>
+                  <BookOpen className="w-5 h-5" />
+                  <span className="font-medium">Manuale Tecnico</span>
                 </button>
                 <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
                   <Settings className="w-5 h-5" />
@@ -363,7 +357,7 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <div className="flex items-center gap-6">
             <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-              {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : 'Operatori'}
+              {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : view === 'manual' ? 'Documentazione Tecnica' : 'Operatori'}
             </h2>
             {viewAsEmail && (
               <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg">
@@ -371,7 +365,7 @@ const App: React.FC = () => {
                 <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Vista: {operatori.find(o => o.email === viewAsEmail)?.nome || viewAsEmail}</span>
               </div>
             )}
-            {cloudStatus === 'connected' && (
+            {cloudStatus === 'connected' && view !== 'manual' && (
               <button 
                 onClick={() => fetchData(true)}
                 className="text-slate-400 hover:text-[#32964D] transition-colors p-2 rounded-lg hover:bg-emerald-50"
@@ -443,6 +437,7 @@ const App: React.FC = () => {
               }}
               onForceCloudSync={forcePushOperatoriOnly}
             />}
+            {view === 'manual' && <TechnicalManual />}
             {view === 'settings' && (
               <div className="space-y-8">
                 {currentUser.role === 'admin' && cloudStatus === 'connected' && (
