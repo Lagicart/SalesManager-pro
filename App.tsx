@@ -39,12 +39,17 @@ const App: React.FC = () => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
     
-    // Notifica Desktop Nativa
-    if (type === 'notification' && Notification.permission === 'granted') {
-      new Notification("SalesManager", {
-        body: message,
-        icon: BRAND_LOGO_DATA
-      });
+    if (type === 'notification' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification("SalesManager Notification", {
+          body: message,
+          icon: BRAND_LOGO_DATA,
+          silent: false,
+          tag: 'sales-manager-notif'
+        });
+      } catch (e) {
+        console.error("Errore creazione notifica nativa:", e);
+      }
     }
 
     setTimeout(() => {
@@ -57,7 +62,7 @@ const App: React.FC = () => {
       const permission = await Notification.requestPermission();
       setNotifPermission(permission);
       if (permission === 'granted') {
-        addToast("Notifiche desktop attivate con successo!", "info");
+        addToast("Notifiche desktop attivate!", "info");
       }
     }
   };
@@ -153,7 +158,9 @@ const App: React.FC = () => {
           id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
           operatoreEmail: d.operatore_email.toLowerCase(),
-          incassato: d.incassato, noteAmministrazione: d.note_amministrazione,
+          incassato: d.incassato, 
+          noteAmministrazione: d.note_amministrazione,
+          notizie: d.notizie || '',
           created_at: d.created_at
         }));
         setVendite(cloudData);
@@ -167,7 +174,7 @@ const App: React.FC = () => {
         setAgenti(cloudData);
       }
 
-      if (oRes.data && oRes.data.length > 0) {
+      if (oRes.data) {
         const cloudData: Operatore[] = ensureAdmin(oRes.data as Operatore[]);
         setOperatori(cloudData);
       }
@@ -179,27 +186,19 @@ const App: React.FC = () => {
     }
   }, [supabase, ensureAdmin]);
 
-  // Sincronizzazione Realtime Unificata e Notifiche Desktop
   useEffect(() => {
     if (supabase && isLoggedIn && currentUser) {
       const userEmail = currentUser.email.toLowerCase();
 
-      // Sottoscrizione notifiche (senza filtro lato DB per massima compatibilità)
       const nSub = supabase
         .channel('realtime-notifiche')
-        .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'notifiche' 
-        }, (payload) => {
-          // Filtriamo qui in Javascript per evitare problemi di casing lato DB
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifiche' }, (payload) => {
           if (payload.new.to_email.toLowerCase() === userEmail) {
             addToast(payload.new.message, 'notification');
           }
         })
         .subscribe();
 
-      // Sottoscrizione aggiornamento dati automatico (Realtime Admin)
       const vSub = supabase.channel('realtime-data').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData(true)).subscribe();
       
       return () => { 
@@ -229,7 +228,6 @@ const App: React.FC = () => {
     setCurrentUser(user);
     setIsLoggedIn(true);
     addToast(`Bentornato, ${user.nome}!`, 'success');
-    // Chiediamo i permessi per le notifiche desktop appena loggati
     requestNotificationPermission();
     setTimeout(() => fetchData(true), 500);
   };
@@ -248,6 +246,7 @@ const App: React.FC = () => {
         payload.metodo_pagamento = data.metodoPagamento;
         payload.operatore_email = data.operatoreEmail.toLowerCase();
         payload.note_amministrazione = data.noteAmministrazione;
+        payload.notizie = data.notizie;
         delete payload.metodoPagamento;
         delete payload.operatoreEmail;
         delete payload.noteAmministrazione;
@@ -300,7 +299,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
-      {/* Toast Notifications */}
       <div className="fixed bottom-6 right-6 z-[200] space-y-3 pointer-events-none no-print">
         {toasts.map(toast => (
           <div 
@@ -437,6 +435,14 @@ const App: React.FC = () => {
                   addToast(`Incasso confermato`, 'success');
                 }} 
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
+                onUpdateNotizie={async (id, notizia) => {
+                   const target = vendite.find(v => v.id === id);
+                   if (!target) return;
+                   const updated = { ...target, notizie: notizia };
+                   setVendite(vendite.map(v => v.id === id ? updated : v));
+                   await syncToCloud('vendite', updated);
+                   addToast("Notizia aggiornata", "success");
+                }}
                 onDelete={async (id) => {
                   if (window.confirm("Sicuro di voler eliminare?")) {
                     setVendite(vendite.filter(v => v.id !== id));
@@ -482,6 +488,7 @@ const App: React.FC = () => {
                 metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} 
                 data={{vendite, agenti, operatori, metodi: metodiPagamento}} onImport={(d) => setVendite(d.vendite || [])}
                 dbConfig={dbConfig} onDbConfigChange={setDbConfig}
+                onTestNotif={() => addToast("Test Notifica Desktop: Se vedi questo, il browser è configurato!", "notification")}
               />
             )}
           </div>
@@ -498,7 +505,8 @@ const App: React.FC = () => {
                 ...data, id: Math.random().toString(36).substr(2, 9),
                 data: new Date().toISOString().split('T')[0], 
                 operatoreEmail: opEmail,
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                notizie: data.notizie || ''
               };
               setVendite(editingVendita ? vendite.map(v => v.id === editingVendita.id ? newV : v) : [newV, ...vendite]);
               setIsFormOpen(false);

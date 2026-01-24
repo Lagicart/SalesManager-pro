@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Trash2, CreditCard, HelpCircle, Copy, Check, Server, AlertTriangle, Save } from 'lucide-react';
+import { Plus, Trash2, CreditCard, HelpCircle, Copy, Check, Server, AlertTriangle, Save, BellRing } from 'lucide-react';
 
 interface SettingsManagerProps {
   metodi: string[];
@@ -10,16 +10,17 @@ interface SettingsManagerProps {
   onImport: (data: any) => void;
   dbConfig: {url: string, key: string} | null;
   onDbConfigChange: (config: {url: string, key: string} | null) => void;
+  onTestNotif?: () => void;
 }
 
-const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isAdmin, dbConfig, onDbConfigChange }) => {
+const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isAdmin, dbConfig, onDbConfigChange, onTestNotif }) => {
   const [nuovoMetodo, setNuovoMetodo] = useState('');
   const [tempUrl, setTempUrl] = useState(dbConfig?.url || '');
   const [tempKey, setTempKey] = useState(dbConfig?.key || '');
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const sqlCode = `-- 1. STRUTTURA TABELLE CON TIMESTAMP PRECISO
+  const sqlCode = `-- SETUP TABLES
 CREATE TABLE IF NOT EXISTS vendite (
   id TEXT PRIMARY KEY,
   data DATE DEFAULT CURRENT_DATE,
@@ -31,11 +32,11 @@ CREATE TABLE IF NOT EXISTS vendite (
   operatore_email TEXT,
   incassato BOOLEAN DEFAULT FALSE,
   note_amministrazione TEXT,
+  notizie TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- AGGIUNGI created_at SE MANCA
-ALTER TABLE vendite ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+ALTER TABLE vendite ADD COLUMN IF NOT EXISTS notizie TEXT;
 
 CREATE TABLE IF NOT EXISTS agenti (
   id TEXT PRIMARY KEY,
@@ -62,13 +63,11 @@ CREATE TABLE IF NOT EXISTS notifiche (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 2. IDENTITÀ DI REPLICA FULL (FONDAMENTALE PER REALTIME)
 ALTER TABLE vendite REPLICA IDENTITY FULL;
 ALTER TABLE agenti REPLICA IDENTITY FULL;
 ALTER TABLE operatori REPLICA IDENTITY FULL;
 ALTER TABLE notifiche REPLICA IDENTITY FULL;
 
--- 3. DISABILITA RLS PER FACILITARE SYNC UFFICIO
 ALTER TABLE vendite DISABLE ROW LEVEL SECURITY;
 ALTER TABLE agenti DISABLE ROW LEVEL SECURITY;
 ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;
@@ -79,7 +78,6 @@ GRANT ALL ON TABLE agenti TO anon;
 GRANT ALL ON TABLE operatori TO anon;
 GRANT ALL ON TABLE notifiche TO anon;
 
--- 4. ATTIVA PUBBLICAZIONE REALTIME
 DO $$ 
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -105,7 +103,7 @@ END $$;`;
   const handleSaveDb = (e: React.FormEvent) => {
     e.preventDefault();
     onDbConfigChange(tempUrl && tempKey ? { url: tempUrl, key: tempKey } : null);
-    alert("Cloud configurato correttamente. Notifiche attive!");
+    alert("Cloud collegato!");
   };
 
   return (
@@ -114,48 +112,33 @@ END $$;`;
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="bg-[#32964D] p-2.5 rounded-xl text-white shadow-lg">
-              <Server className="w-5 h-5" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-900">Database & Notifiche Realtime</h3>
+            <div className="bg-[#32964D] p-2.5 rounded-xl text-white shadow-lg"><Server className="w-5 h-5" /></div>
+            <h3 className="text-xl font-bold text-slate-900">Configurazione Cloud</h3>
           </div>
-          <button onClick={() => setShowHelp(!showHelp)} className="text-xs font-bold bg-slate-100 px-4 py-2 rounded-xl text-slate-600">
-            {showHelp ? 'Nascondi SQL' : 'Mostra Script SQL'}
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={onTestNotif}
+              className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-amber-200 hover:bg-amber-100 transition-all"
+            >
+              <BellRing className="w-4 h-4" /> Test Notifiche
+            </button>
+            <button onClick={() => setShowHelp(!showHelp)} className="text-xs font-bold bg-slate-100 px-4 py-2 rounded-xl text-slate-600">SQL</button>
+          </div>
         </div>
 
         {showHelp && (
-          <div className="mb-8 p-6 bg-slate-900 rounded-2xl text-slate-300 space-y-4">
-            <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs">
-              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-              <p>Copia questo script aggiornato e incollalo nell'SQL Editor di Supabase. Attiva la funzione "Replica Identity FULL" che è indispensabile per le notifiche istantanee.</p>
-            </div>
-            <div className="relative">
-              <button onClick={copySql} className="absolute right-4 top-4 text-[10px] font-bold text-[#32964D] bg-white/5 px-2 py-1 rounded">
-                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-              </button>
-              <pre className="bg-slate-950 p-4 rounded-xl text-[10px] font-mono overflow-x-auto text-emerald-400 h-48 leading-relaxed">{sqlCode}</pre>
-            </div>
+          <div className="mb-8 p-6 bg-slate-900 rounded-2xl text-slate-300">
+             <button onClick={copySql} className="text-[10px] font-black text-[#32964D] bg-white px-2 py-1 rounded mb-4">COPIA SQL AGGIORNATO</button>
+             <pre className="text-[9px] font-mono h-32 overflow-y-auto text-emerald-400">{sqlCode}</pre>
           </div>
         )}
 
         <form onSubmit={handleSaveDb} className="space-y-4">
            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input 
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
-              placeholder="Supabase URL"
-              value={tempUrl}
-              onChange={e => setTempUrl(e.target.value)}
-            />
-            <input 
-              type="password"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
-              placeholder="API Anon Key"
-              value={tempKey}
-              onChange={e => setTempKey(e.target.value)}
-            />
+            <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" placeholder="Supabase URL" value={tempUrl} onChange={e => setTempUrl(e.target.value)} />
+            <input type="password" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" placeholder="Anon Key" value={tempKey} onChange={e => setTempKey(e.target.value)} />
           </div>
-          <button type="submit" className="bg-[#32964D] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">Collega PC e Attiva Notifiche</button>
+          <button type="submit" className="bg-[#32964D] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">Applica Configurazione</button>
         </form>
       </div>
 
@@ -165,12 +148,7 @@ END $$;`;
           <h3 className="text-xl font-bold text-slate-900">Metodi Pagamento</h3>
         </div>
         <form onSubmit={aggiungiMetodo} className="flex gap-2 mb-8">
-          <input 
-            placeholder="Aggiungi metodo..."
-            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#32964D]/20 outline-none font-bold"
-            value={nuovoMetodo}
-            onChange={e => setNuovoMetodo(e.target.value)}
-          />
+          <input placeholder="Nuovo metodo..." className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={nuovoMetodo} onChange={e => setNuovoMetodo(e.target.value)} />
           <button type="submit" className="bg-[#32964D] text-white px-6 py-3 rounded-xl font-bold"><Plus className="w-4 h-4" /></button>
         </form>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
