@@ -29,6 +29,34 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Caricamento Iniziale Operatori (Predefiniti + Salvati)
+  const [operatori, setOperatori] = useState<Operatore[]>(() => {
+    const saved = localStorage.getItem('sm_operatori');
+    const defaultOps = [
+      { id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' },
+      { id: 'op2', nome: 'Marco Operatore 1', email: 'agente1@example.com', role: 'agent', password: '123' }
+    ];
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Uniamo i salvati con i predefiniti evitando duplicati per email
+      const combined = [...parsed];
+      defaultOps.forEach(d => {
+        if (!combined.find(o => o.email === d.email)) combined.push(d);
+      });
+      return combined;
+    }
+    return defaultOps;
+  });
+
+  const [vendite, setVendite] = useState<Vendita[]>([]);
+  const [agenti, setAgenti] = useState<Agente[]>([]);
+  const [metodiPagamento, setMetodiPagamento] = useState<string[]>(['Bonifico', 'Rimessa Diretta', 'Assegno', 'Contanti']);
+  
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
+  const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings'>('dashboard');
+
+  // 1. INIZIALIZZAZIONE SUPABASE
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
       try {
@@ -44,35 +72,24 @@ const App: React.FC = () => {
     }
   }, [dbConfig]);
 
-  const [operatori, setOperatori] = useState<Operatore[]>(() => {
-    const saved = localStorage.getItem('sm_operatori');
-    return saved ? JSON.parse(saved) : [
-      { id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' },
-      { id: 'op2', nome: 'Marco Operatore 1', email: 'agente1@example.com', role: 'agent', password: '123' }
-    ];
-  });
-
-  const [vendite, setVendite] = useState<Vendita[]>([]);
-  const [agenti, setAgenti] = useState<Agente[]>([]);
-  const [metodiPagamento, setMetodiPagamento] = useState<string[]>(['Bonifico', 'Rimessa Diretta', 'Assegno', 'Contanti']);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
-  const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings'>('dashboard');
-  const [notifications, setNotifications] = useState<{msg: string, type: 'info' | 'success'}[]>([]);
-
-  // CARICAMENTO DATI DA SUPABASE O LOCALE
+  // 2. CARICAMENTO DATI (Locale se no Cloud, Cloud se connesso)
   useEffect(() => {
     const fetchData = async () => {
+      // Se non c'è Cloud, carica tutto da LocalStorage
       if (!supabase) {
         const savedVendite = localStorage.getItem('sm_vendite');
         const savedAgenti = localStorage.getItem('sm_agenti');
         const savedMetodi = localStorage.getItem('sm_metodi');
+        const savedOps = localStorage.getItem('sm_operatori');
+        
         if (savedVendite) setVendite(JSON.parse(savedVendite));
         if (savedAgenti) setAgenti(JSON.parse(savedAgenti));
         if (savedMetodi) setMetodiPagamento(JSON.parse(savedMetodi));
+        if (savedOps) setOperatori(JSON.parse(savedOps));
         return;
       }
 
+      // Se c'è Cloud, scarica tutto da Supabase
       setIsSyncing(true);
       try {
         const [vRes, aRes, oRes] = await Promise.all([
@@ -95,6 +112,7 @@ const App: React.FC = () => {
           setOperatori(oRes.data);
         }
       } catch (e) {
+        console.error("Errore fetch Cloud:", e);
         setCloudStatus('error');
       }
       setIsSyncing(false);
@@ -109,7 +127,11 @@ const App: React.FC = () => {
     }
   }, [supabase]);
 
-  // PERSISTENZA STATO LOGIN
+  // 3. PERSISTENZA LOCALE (Salva ogni volta che i dati cambiano)
+  useEffect(() => { localStorage.setItem('sm_vendite', JSON.stringify(vendite)); }, [vendite]);
+  useEffect(() => { localStorage.setItem('sm_agenti', JSON.stringify(agenti)); }, [agenti]);
+  useEffect(() => { localStorage.setItem('sm_operatori', JSON.stringify(operatori)); }, [operatori]);
+  useEffect(() => { localStorage.setItem('sm_metodi', JSON.stringify(metodiPagamento)); }, [metodiPagamento]);
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('sm_current_user', JSON.stringify(currentUser));
@@ -145,7 +167,11 @@ const App: React.FC = () => {
 
   const syncToCloud = async (table: string, data: any) => {
     if (!supabase) return;
-    await supabase.from(table).upsert(data);
+    try {
+      await supabase.from(table).upsert(data);
+    } catch (e) {
+      console.error(`Errore sync ${table}:`, e);
+    }
   };
 
   if (!isLoggedIn || !currentUser) {
@@ -255,7 +281,9 @@ const App: React.FC = () => {
               await syncToCloud('agenti', { id: a.id, nome: a.nome, email: a.email, operatore_email: a.operatoreEmail });
             }} />}
             {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => {
-              const updated = [...operatori.filter(x => x.id !== o.id), o];
+              const updated = operatori.find(x => x.id === o.id) 
+                ? operatori.map(x => x.id === o.id ? o : x)
+                : [...operatori, o];
               setOperatori(updated);
               await syncToCloud('operatori', o);
             }} />}
