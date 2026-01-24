@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sales Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      #local-file-error {
+        display: none;
+        font-family: system-ui, -apple-system, sans-serif;
+        padding: 2rem;
+        text-align: center;
+        max-width: 500px;
+        margin: 100px auto;
+        background: #fff;
+        border-radius: 24px;
+        box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+        border: 1px solid #fee2e2;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.91.1",
+    "recharts": "https://esm.sh/recharts@^3.7.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-50">
+    <div id="root"></div>
+
+    <div id="local-file-error">
+      <div class="mb-4 inline-flex items-center justify-center w-16 h-16 bg-rose-100 text-rose-600 rounded-full">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-8 h-8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+        </svg>
+      </div>
+      <h1 class="text-xl font-bold text-slate-900 mb-2">Errore di Protocollo</h1>
+      <p class="text-slate-600 text-sm mb-6">
+        L'app deve essere servita tramite un web server (Vite/Netlify) per funzionare.
+      </p>
+    </div>
+
+    <script>
+      if (window.location.protocol === 'file:') {
+        document.getElementById('local-file-error').style.display = 'block';
+        document.getElementById('root').style.display = 'none';
+      }
+    </script>
+
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
