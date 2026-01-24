@@ -32,6 +32,9 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Nuova funzionalità: Admin può vedere come un altro operatore
+  const [viewAsEmail, setViewAsEmail] = useState<string | null>(null);
+
   const ensureAdmin = useCallback((list: Operatore[]): Operatore[] => {
     const hasAdmin = list.find(o => o.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
     if (!hasAdmin) {
@@ -169,13 +172,13 @@ const App: React.FC = () => {
     } else {
       localStorage.removeItem('sm_current_user');
       localStorage.setItem('sm_is_logged_in', 'false');
+      setViewAsEmail(null);
     }
   }, [currentUser]);
 
   const handleLogin = (user: Operatore) => {
     setCurrentUser(user);
     setIsLoggedIn(true);
-    // Fetch immediato appena si entra
     setTimeout(() => fetchData(true), 500);
   };
 
@@ -240,7 +243,7 @@ const App: React.FC = () => {
     try {
       setAgenti([]);
       if (supabase) {
-        const { error } = await supabase.from('agenti').delete().neq('id', 'dummy'); // Elimina tutto
+        const { error } = await supabase.from('agenti').delete().neq('id', 'dummy'); 
         if (error) throw error;
       }
       alert("Anagrafica agenti azzerata.");
@@ -253,17 +256,33 @@ const App: React.FC = () => {
     }
   };
 
+  // LOGICA DI FILTRAGGIO MIGLIORATA
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
+    
+    // Se l'Admin sta "simulando" un operatore
+    if (currentUser.role === 'admin' && viewAsEmail) {
+      return vendite.filter(v => v.operatoreEmail.toLowerCase() === viewAsEmail.toLowerCase());
+    }
+    
+    // Se è Admin (senza simulazione) vede tutto
     if (currentUser.role === 'admin') return vendite;
+    
+    // Altrimenti vede solo il suo
     return vendite.filter(v => v.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
-  }, [vendite, currentUser]);
+  }, [vendite, currentUser, viewAsEmail]);
 
   const filteredAgenti = useMemo(() => {
     if (!currentUser) return [];
+    
+    // Se l'Admin sta "simulando" un operatore
+    if (currentUser.role === 'admin' && viewAsEmail) {
+      return agenti.filter(a => a.operatoreEmail.toLowerCase() === viewAsEmail.toLowerCase());
+    }
+    
     if (currentUser.role === 'admin') return agenti;
     return agenti.filter(a => a.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
-  }, [agenti, currentUser]);
+  }, [agenti, currentUser, viewAsEmail]);
 
   if (!isLoggedIn || !currentUser) {
     return <LoginScreen operatori={operatori} onLogin={handleLogin} onConfigChange={setDbConfig} />;
@@ -307,7 +326,13 @@ const App: React.FC = () => {
         </div>
         
         <div className="mt-auto p-6 border-t border-white/10">
-          <UserSwitcher currentUser={currentUser} onLogout={handleLogout} />
+          <UserSwitcher 
+            currentUser={currentUser} 
+            operatori={operatori}
+            onLogout={handleLogout} 
+            viewAsEmail={viewAsEmail}
+            onViewAsChange={setViewAsEmail}
+          />
           <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2">
              {cloudStatus === 'connected' ? (
                <div className="flex flex-col gap-1">
@@ -340,6 +365,12 @@ const App: React.FC = () => {
             <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
               {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : 'Operatori'}
             </h2>
+            {viewAsEmail && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+                <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Vista: {operatori.find(o => o.email === viewAsEmail)?.nome || viewAsEmail}</span>
+              </div>
+            )}
             {cloudStatus === 'connected' && (
               <button 
                 onClick={() => fetchData(true)}
@@ -446,15 +477,16 @@ const App: React.FC = () => {
           <SalesForm 
             onClose={() => setIsFormOpen(false)} 
             onSubmit={async (data) => {
+              const opEmail = viewAsEmail || currentUser.email;
               const newV = editingVendita ? { ...editingVendita, ...data } : {
                 ...data, id: Math.random().toString(36).substr(2, 9),
-                data: new Date().toISOString().split('T')[0], operatoreEmail: currentUser.email
+                data: new Date().toISOString().split('T')[0], operatoreEmail: opEmail
               };
               setVendite(editingVendita ? vendite.map(v => v.id === editingVendita.id ? newV : v) : [newV, ...vendite]);
               setIsFormOpen(false);
               await syncToCloud('vendite', newV);
             }} 
-            userEmail={currentUser.email} availableAgentList={filteredAgenti} metodiDisponibili={metodiPagamento}
+            userEmail={viewAsEmail || currentUser.email} availableAgentList={filteredAgenti} metodiDisponibili={metodiPagamento}
             initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'}
           />
         </div>
