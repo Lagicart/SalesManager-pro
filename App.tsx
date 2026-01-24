@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
 import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, Database } from 'lucide-react';
@@ -29,7 +30,6 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Caricamento Iniziale Operatori (Predefiniti + Salvati)
   const [operatori, setOperatori] = useState<Operatore[]>(() => {
     const saved = localStorage.getItem('sm_operatori');
     const defaultOps = [
@@ -38,7 +38,6 @@ const App: React.FC = () => {
     ];
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Uniamo i salvati con i predefiniti evitando duplicati per email
       const combined = [...parsed];
       defaultOps.forEach(d => {
         if (!combined.find(o => o.email === d.email)) combined.push(d);
@@ -56,7 +55,6 @@ const App: React.FC = () => {
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
   const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings'>('dashboard');
 
-  // 1. INIZIALIZZAZIONE SUPABASE
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
       try {
@@ -72,10 +70,8 @@ const App: React.FC = () => {
     }
   }, [dbConfig]);
 
-  // 2. CARICAMENTO DATI (Locale se no Cloud, Cloud se connesso)
   useEffect(() => {
     const fetchData = async () => {
-      // Se non c'è Cloud, carica tutto da LocalStorage
       if (!supabase) {
         const savedVendite = localStorage.getItem('sm_vendite');
         const savedAgenti = localStorage.getItem('sm_agenti');
@@ -89,7 +85,6 @@ const App: React.FC = () => {
         return;
       }
 
-      // Se c'è Cloud, scarica tutto da Supabase
       setIsSyncing(true);
       try {
         const [vRes, aRes, oRes] = await Promise.all([
@@ -106,7 +101,10 @@ const App: React.FC = () => {
           })));
         }
         if (aRes.data) {
-          setAgenti(aRes.data.map(d => ({ id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email })));
+          setAgenti(aRes.data.map(d => ({ 
+            id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email,
+            telefono: d.telefono, zona: d.zona
+          })));
         }
         if (oRes.data && oRes.data.length > 0) {
           setOperatori(oRes.data);
@@ -123,11 +121,11 @@ const App: React.FC = () => {
     if (supabase) {
       const vSub = supabase.channel('v-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData()).subscribe();
       const oSub = supabase.channel('o-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData()).subscribe();
-      return () => { supabase.removeChannel(vSub); supabase.removeChannel(oSub); };
+      const aSub = supabase.channel('a-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData()).subscribe();
+      return () => { supabase.removeChannel(vSub); supabase.removeChannel(oSub); supabase.removeChannel(aSub); };
     }
   }, [supabase]);
 
-  // 3. PERSISTENZA LOCALE (Salva ogni volta che i dati cambiano)
   useEffect(() => { localStorage.setItem('sm_vendite', JSON.stringify(vendite)); }, [vendite]);
   useEffect(() => { localStorage.setItem('sm_agenti', JSON.stringify(agenti)); }, [agenti]);
   useEffect(() => { localStorage.setItem('sm_operatori', JSON.stringify(operatori)); }, [operatori]);
@@ -168,7 +166,21 @@ const App: React.FC = () => {
   const syncToCloud = async (table: string, data: any) => {
     if (!supabase) return;
     try {
-      await supabase.from(table).upsert(data);
+      // Mapping dei nomi colonne per Supabase (snake_case)
+      const payload = { ...data };
+      if (table === 'vendite') {
+        payload.metodo_pagamento = data.metodoPagamento;
+        payload.operatore_email = data.operatoreEmail;
+        payload.note_amministrazione = data.noteAmministrazione;
+        delete payload.metodoPagamento;
+        delete payload.operatoreEmail;
+        delete payload.noteAmministrazione;
+      }
+      if (table === 'agenti') {
+        payload.operatore_email = data.operatoreEmail;
+        delete payload.operatoreEmail;
+      }
+      await supabase.from(table).upsert(payload);
     } catch (e) {
       console.error(`Errore sync ${table}:`, e);
     }
@@ -260,9 +272,9 @@ const App: React.FC = () => {
                   setVendite(updated);
                   const target = updated.find(v => v.id === id);
                   if (target) await syncToCloud('vendite', {
-                    id: target.id, data: target.data, cliente: target.cliente, importo: target.importo,
-                    metodo_pagamento: target.metodoPagamento, sconto: target.sconto, agente: target.agente,
-                    operatore_email: target.operatoreEmail, incassato: true, note_amministrazione: 'OK MARILENA'
+                    ...target,
+                    incassato: true,
+                    noteAmministrazione: 'OK MARILENA'
                   });
                 }} 
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
@@ -276,9 +288,9 @@ const App: React.FC = () => {
             )}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
             {view === 'agents' && <AgentManager agenti={filteredAgenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} onUpdate={async (a) => {
-              const updated = [...agenti.filter(x => x.id !== a.id), a];
+              const updated = agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti];
               setAgenti(updated);
-              await syncToCloud('agenti', { id: a.id, nome: a.nome, email: a.email, operatore_email: a.operatoreEmail });
+              await syncToCloud('agenti', a);
             }} />}
             {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => {
               const updated = operatori.find(x => x.id === o.id) 
@@ -309,11 +321,7 @@ const App: React.FC = () => {
               };
               setVendite(editingVendita ? vendite.map(v => v.id === editingVendita.id ? newV : v) : [newV, ...vendite]);
               setIsFormOpen(false);
-              await syncToCloud('vendite', {
-                id: newV.id, data: newV.data, cliente: newV.cliente, importo: newV.importo,
-                metodo_pagamento: newV.metodoPagamento, sconto: newV.sconto, agente: newV.agente,
-                operatore_email: newV.operatoreEmail, incassato: newV.incassato, note_amministrazione: newV.noteAmministrazione
-              });
+              await syncToCloud('vendite', newV);
             }} 
             userEmail={currentUser.email} availableAgentList={filteredAgenti} metodiDisponibili={metodiPagamento}
             initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'}

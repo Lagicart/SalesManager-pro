@@ -12,6 +12,8 @@ export interface Agente {
   nome: string;
   email: string;
   operatoreEmail: string;
+  telefono?: string;
+  zona?: string;
 }
 
 export interface Vendita {

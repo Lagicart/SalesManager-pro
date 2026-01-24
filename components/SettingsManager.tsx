@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Plus, Trash2, CreditCard, Download, Upload, Database, HelpCircle, Copy, Check, Server } from 'lucide-react';
 
@@ -34,12 +35,14 @@ CREATE TABLE IF NOT EXISTS vendite (
   note_amministrazione TEXT
 );
 
--- 2. Tabella Agenti
+-- 2. Tabella Agenti (AGGIORNATA)
 CREATE TABLE IF NOT EXISTS agenti (
   id TEXT PRIMARY KEY,
   nome TEXT,
   email TEXT,
-  operatore_email TEXT
+  operatore_email TEXT,
+  telefono TEXT,
+  zona TEXT
 );
 
 -- 3. Tabella Operatori (Account Login)
@@ -110,7 +113,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE vendite, agenti, operatori;`;
             <h4 className="font-bold text-white flex items-center gap-2 italic">
               Aggiornamento Database Necessario
             </h4>
-            <p className="text-xs">Per abilitare il login sincronizzato, devi eseguire il nuovo codice SQL nel tuo pannello Supabase.</p>
+            <p className="text-xs">Per supportare i campi Telefono e Zona, devi rieseguire il codice SQL nel tuo pannello Supabase.</p>
             
             <div className="mt-4 relative">
               <button onClick={copySql} className="absolute right-4 top-4 flex items-center gap-1.5 text-[10px] font-bold text-[#32964D] hover:text-white transition-colors bg-white/5 px-2 py-1 rounded">
