@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { CheckCircle, Clock, Calendar, Search, Filter, RotateCcw, Pencil, Trash2, ChevronDown, Check, Download, Printer } from 'lucide-react';
+import { CheckCircle, Clock, Calendar, Search, Filter, RotateCcw, Pencil, Trash2, ChevronDown, Check, Download, Printer, User } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -15,6 +14,7 @@ interface SalesTableProps {
 const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isAdmin, onIncasso, onEdit, onDelete }) => {
   const [filters, setFilters] = useState({
     cliente: '',
+    agente: '',
     data: '',
     metodiSelezionati: [] as string[],
     status: 'all' as 'all' | 'incassato' | 'pendente',
@@ -37,6 +37,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
   const filteredData = useMemo(() => {
     return vendite.filter(v => {
       const matchCliente = v.cliente.toLowerCase().includes(filters.cliente.toLowerCase());
+      const matchAgente = v.agente.toLowerCase().includes(filters.agente.toLowerCase());
       const matchData = filters.data ? v.data.includes(filters.data) : true;
       const matchMetodo = filters.metodiSelezionati.length > 0 
         ? filters.metodiSelezionati.includes(v.metodoPagamento) 
@@ -52,7 +53,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
         matchNote = !v.noteAmministrazione || v.noteAmministrazione.trim() === '';
       }
       
-      return matchCliente && matchData && matchMetodo && matchStatus && matchNote;
+      return matchCliente && matchAgente && matchData && matchMetodo && matchStatus && matchNote;
     });
   }, [vendite, filters]);
 
@@ -68,6 +69,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
   const resetFilters = () => {
     setFilters({
       cliente: '',
+      agente: '',
       data: '',
       metodiSelezionati: [],
       status: 'all',
@@ -111,7 +113,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
     }, 100);
   };
 
-  const hasActiveFilters = filters.cliente || filters.data || filters.metodiSelezionati.length > 0 || filters.status !== 'all' || filters.noteType !== 'all';
+  const hasActiveFilters = filters.cliente || filters.agente || filters.data || filters.metodiSelezionati.length > 0 || filters.status !== 'all' || filters.noteType !== 'all';
 
   return (
     <div className="space-y-4">
@@ -134,8 +136,6 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
           table { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto; }
           tr { page-break-inside: avoid; page-break-after: auto; }
           th, td { border: 1px solid #e2e8f0 !important; padding: 8px !important; font-size: 10px !important; color: black !important; }
-          .status-incassato { color: #32964D !important; font-weight: bold !important; }
-          .status-pendente { color: #d97706 !important; font-weight: bold !important; }
         }
         .print-only { display: none; }
       `}</style>
@@ -152,36 +152,23 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-2 text-slate-800 font-bold">
             <Filter className="w-4 h-4 text-[#32964D]" />
-            <span>Pannello Ricerca e Strumenti</span>
+            <span>Filtri e Ricerca</span>
           </div>
           
           <div className="flex flex-wrap items-center gap-2">
-            <button 
-              type="button"
-              onClick={exportToExcel}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all border border-slate-200"
-            >
-              <Download className="w-3.5 h-3.5" /> Esporta Excel
+            <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all border border-slate-200">
+              <Download className="w-3.5 h-3.5" /> Esporta CSV
             </button>
-            <button 
-              type="button"
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-[#32964D] rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all border border-emerald-200 shadow-sm"
-            >
-              <Printer className="w-3.5 h-3.5" /> Stampa Lista
+            <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-[#32964D] rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all border border-emerald-200 shadow-sm">
+              <Printer className="w-3.5 h-3.5" /> Stampa
             </button>
-            <div className="w-px h-6 bg-slate-200 mx-2 hidden md:block" />
-            <button 
-              type="button"
-              onClick={resetFilters}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${hasActiveFilters ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200 opacity-60 cursor-default'}`}
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Azzera Filtri
+            <button onClick={resetFilters} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${hasActiveFilters ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-50 text-slate-400 border-slate-200 opacity-60'}`}>
+              <RotateCcw className="w-3.5 h-3.5" /> Reset
             </button>
           </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input 
@@ -190,6 +177,17 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-[#32964D]/20 outline-none"
               value={filters.cliente}
               onChange={e => setFilters({...filters, cliente: e.target.value})}
+            />
+          </div>
+
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Cerca Agente..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-[#32964D]/20 outline-none"
+              value={filters.agente}
+              onChange={e => setFilters({...filters, agente: e.target.value})}
             />
           </div>
 
@@ -210,15 +208,12 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
               className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium flex items-center justify-between hover:bg-slate-100 transition-colors"
             >
               <span className="truncate">
-                {filters.metodiSelezionati.length === 0 
-                  ? 'Tutti i Metodi' 
-                  : `${filters.metodiSelezionati.length} Selezionati`}
+                {filters.metodiSelezionati.length === 0 ? 'Tutti i Metodi' : `${filters.metodiSelezionati.length} Selezionati`}
               </span>
               <ChevronDown className={`w-4 h-4 transition-transform ${isMetodoDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
-            
             {isMetodoDropdownOpen && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 space-y-1">
                 {metodiDisponibili.map(m => (
                   <button
                     key={m}
@@ -263,10 +258,10 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cliente</th>
+                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agente</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Importo</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Metodo</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Note Admin</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right no-print">Azioni</th>
               </tr>
             </thead>
@@ -275,21 +270,15 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 <tr key={v.id} className={`hover:bg-slate-50 transition-colors ${v.incassato ? 'bg-emerald-50/20' : ''}`}>
                   <td className="px-6 py-4 text-sm font-medium text-slate-500">{new Date(v.data).toLocaleDateString('it-IT')}</td>
                   <td className="px-6 py-4 text-sm font-bold text-slate-900">{v.cliente}</td>
+                  <td className="px-6 py-4 text-xs font-medium text-slate-600 italic">{v.agente}</td>
                   <td className="px-6 py-4 text-sm font-black text-slate-900">€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
                   <td className="px-6 py-4"><span className="text-[10px] font-bold uppercase tracking-tight bg-slate-100 px-2 py-1 rounded-lg text-slate-600 border border-slate-200">{v.metodoPagamento}</span></td>
                   <td className="px-6 py-4">
                     {v.incassato ? (
-                      <div className="flex items-center gap-1.5 text-[#32964D] font-bold text-xs status-incassato"><CheckCircle className="w-3.5 h-3.5 no-print" /> Incassato</div>
+                      <div className="flex items-center gap-1.5 text-[#32964D] font-bold text-xs"><CheckCircle className="w-3.5 h-3.5" /> Incassato</div>
                     ) : (
-                      <div className="flex items-center gap-1.5 text-orange-500 font-bold text-xs status-pendente"><Clock className="w-3.5 h-3.5 no-print" /> Pendente</div>
+                      <div className="flex items-center gap-1.5 text-orange-500 font-bold text-xs"><Clock className="w-3.5 h-3.5" /> Pendente</div>
                     )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {v.noteAmministrazione ? (
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${v.noteAmministrazione === 'OK MARILENA' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                        {v.noteAmministrazione}
-                      </span>
-                    ) : '-'}
                   </td>
                   <td className="px-6 py-4 no-print text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -312,11 +301,11 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
             {filteredData.length > 0 && (
               <tfoot className="bg-slate-50 font-black border-t-2 border-slate-200">
                 <tr>
-                  <td colSpan={2} className="px-6 py-5 text-sm text-slate-500 uppercase tracking-widest font-bold">Totale Report Selezionato</td>
+                  <td colSpan={3} className="px-6 py-5 text-sm text-slate-500 uppercase tracking-widest font-bold">Totale Filtrato</td>
                   <td className="px-6 py-5 text-xl text-[#32964D]">
                     € {filteredData.reduce((acc, curr) => acc + curr.importo, 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })}
                   </td>
-                  <td colSpan={4} className="no-print"></td>
+                  <td colSpan={3} className="no-print"></td>
                 </tr>
               </tfoot>
             )}
