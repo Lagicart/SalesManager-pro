@@ -117,7 +117,7 @@ const App: React.FC = () => {
     setIsSyncing(true);
     try {
       const [vRes, aRes, oRes] = await Promise.all([
-        supabase.from('vendite').select('*').order('data', { ascending: false }),
+        supabase.from('vendite').select('*').order('created_at', { ascending: false }),
         supabase.from('agenti').select('*'),
         supabase.from('operatori').select('*')
       ]);
@@ -126,15 +126,10 @@ const App: React.FC = () => {
         const cloudData: Vendita[] = vRes.data.map(d => ({
           id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
-          operatoreEmail: d.operatore_email, incassato: d.incassato, noteAmministrazione: d.note_amministrazione
+          operatoreEmail: d.operatore_email, incassato: d.incassato, noteAmministrazione: d.note_amministrazione,
+          created_at: d.created_at
         }));
-        setVendite(prev => {
-          const cloudIds = new Set(cloudData.map(d => d.id));
-          const onlyLocal = prev.filter(p => !cloudIds.has(p.id));
-          const combined = [...cloudData, ...onlyLocal];
-          // Default sort: più recente in alto
-          return combined.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
-        });
+        setVendite(cloudData);
       }
       
       if (aRes.data) {
@@ -142,20 +137,12 @@ const App: React.FC = () => {
           id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email,
           telefono: d.telefono, zona: d.zona
         }));
-        setAgenti(prev => {
-          const cloudIds = new Set(cloudData.map(d => d.id));
-          const onlyLocal = prev.filter(p => !cloudIds.has(p.id));
-          return [...cloudData, ...onlyLocal];
-        });
+        setAgenti(cloudData);
       }
 
       if (oRes.data && oRes.data.length > 0) {
         const cloudData: Operatore[] = ensureAdmin(oRes.data as Operatore[]);
-        setOperatori(prev => {
-          const cloudEmails = new Set(cloudData.map(d => d.email.toLowerCase()));
-          const onlyLocal = prev.filter(p => !cloudEmails.has(p.email.toLowerCase()));
-          return ensureAdmin([...cloudData, ...onlyLocal]);
-        });
+        setOperatori(cloudData);
       }
       setLastSyncTime(new Date().toLocaleTimeString('it-IT'));
     } catch (e) {
@@ -165,11 +152,11 @@ const App: React.FC = () => {
     }
   }, [supabase, ensureAdmin]);
 
-  // Gestione Notifiche Realtime
+  // Gestione Notifiche Realtime - Solo per l'utente loggato
   useEffect(() => {
     if (supabase && isLoggedIn && currentUser) {
       const nSub = supabase
-        .channel('notifiche-user')
+        .channel(`notifiche-${currentUser.email}`)
         .on('postgres_changes', { 
           event: 'INSERT', 
           schema: 'public', 
@@ -184,12 +171,16 @@ const App: React.FC = () => {
     }
   }, [supabase, isLoggedIn, currentUser]);
 
+  // Sincronizzazione Realtime per tutti i dati (fondamentale per Admin)
   useEffect(() => {
     if (supabase && isLoggedIn) {
       fetchData(true);
-      const vSub = supabase.channel('v-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData()).subscribe();
-      const oSub = supabase.channel('o-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData()).subscribe();
-      const aSub = supabase.channel('a-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData()).subscribe();
+      const vSub = supabase.channel('v-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => {
+        fetchData(true);
+      }).subscribe();
+      const oSub = supabase.channel('o-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData(true)).subscribe();
+      const aSub = supabase.channel('a-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData(true)).subscribe();
+      
       return () => { 
         supabase.removeChannel(vSub); 
         supabase.removeChannel(oSub); 
@@ -266,48 +257,6 @@ const App: React.FC = () => {
       });
     } catch (e) {
       console.error("Errore invio notifica:", e);
-    }
-  };
-
-  const forcePushAllToCloud = async () => {
-    if (!supabase) return;
-    setIsSyncing(true);
-    try {
-      for (const op of operatori) await syncToCloud('operatori', op);
-      for (const ag of agenti) await syncToCloud('agenti', ag);
-      for (const ve of vendite) await syncToCloud('vendite', ve);
-      addToast("Sincronizzazione completata con successo!", "success");
-      fetchData(true);
-    } catch (e) {
-      addToast("Errore durante la sincronizzazione massiva", "error");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const forcePushOperatoriOnly = async () => {
-    if (!supabase) return;
-    for (const op of operatori) await syncToCloud('operatori', op);
-    addToast("Operatori sincronizzati", "success");
-    await fetchData(true);
-  };
-
-  const handleDeleteAllAgents = async () => {
-    if (!window.confirm("Attenzione: questa azione eliminerà TUTTI gli agenti sia in locale che sul Cloud. Procedere?")) return;
-    
-    setIsSyncing(true);
-    try {
-      setAgenti([]);
-      if (supabase) {
-        const { error } = await supabase.from('agenti').delete().neq('id', 'dummy'); 
-        if (error) throw error;
-      }
-      addToast("Anagrafica agenti azzerata", "info");
-    } catch (e) {
-      addToast("Errore durante l'azzeramento", "error");
-    } finally {
-      setIsSyncing(false);
-      fetchData(true);
     }
   };
 
@@ -511,7 +460,6 @@ const App: React.FC = () => {
                 await syncToCloud('agenti', a);
                 addToast(`Profilo ${a.nome} aggiornato`, 'success');
               }} 
-              onReset={handleDeleteAllAgents}
             />}
             {view === 'operators' && <OperatorManager 
               operatori={operatori} 
@@ -532,33 +480,14 @@ const App: React.FC = () => {
                 }
                 addToast("Account operatore rimosso", "info");
               }}
-              onForceCloudSync={forcePushOperatoriOnly}
             />}
             {view === 'manual' && <TechnicalManual />}
             {view === 'settings' && (
-              <div className="space-y-8">
-                {currentUser.role === 'admin' && cloudStatus === 'connected' && (
-                  <div className="bg-emerald-900 p-6 rounded-3xl text-white shadow-xl flex items-center justify-between border border-emerald-500/20">
-                    <div>
-                      <h4 className="font-bold flex items-center gap-2 text-emerald-400">
-                        <UploadCloud className="w-5 h-5" /> Sincronizzazione Master
-                      </h4>
-                      <p className="text-xs text-emerald-100/70 mt-1">Sincronizza manualmente tutti i dati di questo PC con il database online.</p>
-                    </div>
-                    <button 
-                      onClick={forcePushAllToCloud}
-                      className="bg-white/10 hover:bg-white/20 px-6 py-2.5 rounded-xl font-bold text-sm border border-white/10 transition-all active:scale-95"
-                    >
-                      Allinea Cloud Now
-                    </button>
-                  </div>
-                )}
-                <SettingsManager 
-                  metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} 
-                  data={{vendite, agenti, operatori, metodi: metodiPagamento}} onImport={(d) => setVendite(d.vendite || [])}
-                  dbConfig={dbConfig} onDbConfigChange={setDbConfig}
-                />
-              </div>
+              <SettingsManager 
+                metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} 
+                data={{vendite, agenti, operatori, metodi: metodiPagamento}} onImport={(d) => setVendite(d.vendite || [])}
+                dbConfig={dbConfig} onDbConfigChange={setDbConfig}
+              />
             )}
           </div>
         </section>

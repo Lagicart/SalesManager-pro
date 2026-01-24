@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Trash2, CreditCard, Download, Upload, Database, HelpCircle, Copy, Check, Server, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, CreditCard, HelpCircle, Copy, Check, Server, AlertTriangle, Save } from 'lucide-react';
 
 interface SettingsManagerProps {
   metodi: string[];
@@ -12,14 +12,14 @@ interface SettingsManagerProps {
   onDbConfigChange: (config: {url: string, key: string} | null) => void;
 }
 
-const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isAdmin, data, onImport, dbConfig, onDbConfigChange }) => {
+const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isAdmin, dbConfig, onDbConfigChange }) => {
   const [nuovoMetodo, setNuovoMetodo] = useState('');
   const [tempUrl, setTempUrl] = useState(dbConfig?.url || '');
   const [tempKey, setTempKey] = useState(dbConfig?.key || '');
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const sqlCode = `-- 1. CREAZIONE TABELLE
+  const sqlCode = `-- AGGIORNAMENTO STRUTTURA PER ORDINAMENTO PRECISO
 CREATE TABLE IF NOT EXISTS vendite (
   id TEXT PRIMARY KEY,
   data DATE DEFAULT CURRENT_DATE,
@@ -30,8 +30,12 @@ CREATE TABLE IF NOT EXISTS vendite (
   agente TEXT,
   operatore_email TEXT,
   incassato BOOLEAN DEFAULT FALSE,
-  note_amministrazione TEXT
+  note_amministrazione TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) -- CAMPO FONDAMENTALE
 );
+
+-- AGGIUNGI COLONNA SE MANCA (per chi ha già la tabella)
+ALTER TABLE vendite ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
 
 CREATE TABLE IF NOT EXISTS agenti (
   id TEXT PRIMARY KEY,
@@ -58,19 +62,18 @@ CREATE TABLE IF NOT EXISTS notifiche (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 2. DISABILITA RLS
+-- DISABILITA RLS E PERMESSI
 ALTER TABLE vendite DISABLE ROW LEVEL SECURITY;
 ALTER TABLE agenti DISABLE ROW LEVEL SECURITY;
 ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;
 ALTER TABLE notifiche DISABLE ROW LEVEL SECURITY;
 
--- 3. PERMESSI PUBBLICI
 GRANT ALL ON TABLE vendite TO anon;
 GRANT ALL ON TABLE agenti TO anon;
 GRANT ALL ON TABLE operatori TO anon;
 GRANT ALL ON TABLE notifiche TO anon;
 
--- 4. REALTIME
+-- ATTIVA REALTIME
 DO $$ 
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -95,13 +98,8 @@ END $$;`;
 
   const handleSaveDb = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tempUrl || !tempKey) {
-      onDbConfigChange(null);
-      alert("Configurazione Cloud rimossa.");
-    } else {
-      onDbConfigChange({ url: tempUrl, key: tempKey });
-      alert("Configurazione Cloud salvata con successo!");
-    }
+    onDbConfigChange(tempUrl && tempKey ? { url: tempUrl, key: tempKey } : null);
+    alert("Configurazione Cloud salvata con successo!");
   };
 
   return (
@@ -113,87 +111,62 @@ END $$;`;
             <div className="bg-[#32964D] p-2.5 rounded-xl text-white shadow-lg">
               <Server className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">Configurazione Cloud Supabase</h3>
-              <p className="text-slate-500 text-sm">Sincronizza i dati in tempo reale tra tutti i PC.</p>
-            </div>
+            <h3 className="text-xl font-bold text-slate-900">Database Realtime</h3>
           </div>
-          <button 
-            onClick={() => setShowHelp(!showHelp)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${showHelp ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            <HelpCircle className="w-4 h-4" /> {showHelp ? 'Nascondi Guida' : 'Mostra Script SQL'}
+          <button onClick={() => setShowHelp(!showHelp)} className="text-xs font-bold bg-slate-100 px-4 py-2 rounded-xl text-slate-600">
+            {showHelp ? 'Nascondi SQL' : 'Mostra Script SQL'}
           </button>
         </div>
 
         {showHelp && (
-          <div className="mb-8 p-6 bg-slate-900 rounded-2xl text-slate-300 space-y-4 animate-in zoom-in-95">
+          <div className="mb-8 p-6 bg-slate-900 rounded-2xl text-slate-300 space-y-4">
             <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs">
               <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-              <p>
-                <strong>Attenzione:</strong> Copia lo script SQL aggiornato qui sotto e incollalo nell'Editor di Supabase per attivare il nuovo sistema di notifiche e l'ordinamento avanzato.
-              </p>
+              <p>Copia questo script e incollalo nell'SQL Editor di Supabase. Risolverà i problemi di ordinamento e notifiche.</p>
             </div>
-            
-            <div className="mt-4 relative">
-              <button onClick={copySql} className="absolute right-4 top-4 flex items-center gap-1.5 text-[10px] font-bold text-[#32964D] hover:text-white transition-colors bg-white/5 px-2 py-1 rounded">
-                {copied ? <><Check className="w-3 h-3" /> Copiato!</> : <><Copy className="w-3 h-3" /> Copia Codice SQL</>}
+            <div className="relative">
+              <button onClick={copySql} className="absolute right-4 top-4 text-[10px] font-bold text-[#32964D] bg-white/5 px-2 py-1 rounded">
+                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               </button>
-              <pre className="bg-slate-950 p-4 rounded-xl text-[10px] font-mono overflow-x-auto border border-white/5 text-emerald-400 pt-10 h-48">
-                {sqlCode}
-              </pre>
+              <pre className="bg-slate-950 p-4 rounded-xl text-[10px] font-mono overflow-x-auto text-emerald-400 h-48">{sqlCode}</pre>
             </div>
           </div>
         )}
 
         <form onSubmit={handleSaveDb} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">Project URL</label>
-              <input 
-                type="text"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
-                placeholder="https://xyz.supabase.co"
-                value={tempUrl}
-                onChange={e => setTempUrl(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 ml-1">API Anon Key</label>
-              <input 
-                type="password"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
-                placeholder="eyJ..."
-                value={tempKey}
-                onChange={e => setTempKey(e.target.value)}
-              />
-            </div>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input 
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
+              placeholder="Supabase URL"
+              value={tempUrl}
+              onChange={e => setTempUrl(e.target.value)}
+            />
+            <input 
+              type="password"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#32964D]/20 font-bold"
+              placeholder="API Anon Key"
+              value={tempKey}
+              onChange={e => setTempKey(e.target.value)}
+            />
           </div>
-          <button type="submit" className="bg-[#32964D] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-[#2b7e41] transition-all">
-            Salva e Connetti Cloud
-          </button>
+          <button type="submit" className="bg-[#32964D] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg">Salva Configurazione</button>
         </form>
       </div>
 
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
         <div className="flex items-center gap-3 mb-6">
-          <div className="bg-[#32964D] p-2.5 rounded-xl text-white">
-            <CreditCard className="w-5 h-5" />
-          </div>
+          <div className="bg-[#32964D] p-2.5 rounded-xl text-white"><CreditCard className="w-5 h-5" /></div>
           <h3 className="text-xl font-bold text-slate-900">Metodi Pagamento</h3>
         </div>
-
         <form onSubmit={aggiungiMetodo} className="flex gap-2 mb-8">
           <input 
-            type="text"
-            placeholder="Aggiungi metodo (es: Assegno)..."
+            placeholder="Aggiungi metodo..."
             className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-[#32964D]/20 outline-none font-bold"
             value={nuovoMetodo}
             onChange={e => setNuovoMetodo(e.target.value)}
           />
-          <button type="submit" className="bg-[#32964D] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#2b7e41] transition-all"><Plus className="w-4 h-4" /></button>
+          <button type="submit" className="bg-[#32964D] text-white px-6 py-3 rounded-xl font-bold"><Plus className="w-4 h-4" /></button>
         </form>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {metodi.map(m => (
             <div key={m} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group">

@@ -27,6 +27,7 @@ export interface Vendita {
   operatoreEmail: string;
   incassato: boolean;
   noteAmministrazione: string;
+  created_at?: string; // Timestamp per ordinamento millimetrico
 }
 
 export const ADMIN_EMAIL = 'admin@example.com';
