@@ -1,14 +1,15 @@
 
 import React, { useState } from 'react';
-import { Operatore } from '../types';
-import { UserPlus, Shield, Key, Mail, X, Save, User, ChevronDown } from 'lucide-react';
+import { Operatore, ADMIN_EMAIL } from '../types';
+import { UserPlus, Shield, Key, Mail, X, Save, User, Trash2, Pencil } from 'lucide-react';
 
 interface OperatorManagerProps {
   operatori: Operatore[];
   onUpdate: (op: Operatore) => void;
+  onDelete: (id: string) => void;
 }
 
-const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate }) => {
+const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate, onDelete }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOp, setEditingOp] = useState<Operatore | null>(null);
   const [formData, setFormData] = useState<Omit<Operatore, 'id'>>({
@@ -42,6 +43,17 @@ const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate }
       id: editingOp?.id || Math.random().toString(36).substr(2, 9)
     });
     setIsModalOpen(false);
+  };
+
+  const handleDelete = (op: Operatore) => {
+    if (op.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+      alert("L'account amministratore principale non può essere eliminato per motivi di sicurezza.");
+      return;
+    }
+
+    if (window.confirm(`Sei sicuro di voler eliminare definitivamente l'account di ${op.nome}? Questa azione non può essere annullata.`)) {
+      onDelete(op.id);
+    }
   };
 
   return (
@@ -89,12 +101,23 @@ const OperatorManager: React.FC<OperatorManagerProps> = ({ operatori, onUpdate }
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => handleEdit(op)}
-                      className="text-xs font-bold text-[#32964D] hover:bg-emerald-50 px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-emerald-100"
-                    >
-                      Modifica Account
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => handleEdit(op)}
+                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all border border-transparent hover:border-amber-200"
+                        title="Modifica Account"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(op)}
+                        className={`p-2 rounded-lg transition-all border border-transparent ${op.email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'text-slate-200 cursor-not-allowed' : 'text-rose-600 hover:bg-rose-50 hover:border-rose-200'}`}
+                        title="Elimina Account"
+                        disabled={op.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

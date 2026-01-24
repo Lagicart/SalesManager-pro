@@ -340,13 +340,24 @@ const App: React.FC = () => {
               setAgenti(updated);
               await syncToCloud('agenti', a);
             }} />}
-            {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => {
-              const updated = operatori.find(x => x.id === o.id) 
-                ? operatori.map(x => x.id === o.id ? o : x)
-                : [...operatori, o];
-              setOperatori(ensureAdmin(updated));
-              await syncToCloud('operatori', o);
-            }} />}
+            {view === 'operators' && <OperatorManager 
+              operatori={operatori} 
+              onUpdate={async (o) => {
+                const updated = operatori.find(x => x.id === o.id) 
+                  ? operatori.map(x => x.id === o.id ? o : x)
+                  : [...operatori, o];
+                setOperatori(ensureAdmin(updated));
+                await syncToCloud('operatori', o);
+              }} 
+              onDelete={async (id) => {
+                const updated = operatori.filter(o => o.id !== id);
+                setOperatori(ensureAdmin(updated));
+                if (supabase) {
+                  const { error } = await supabase.from('operatori').delete().eq('id', id);
+                  if (error) console.error("Errore eliminazione operatore:", error);
+                }
+              }}
+            />}
             {view === 'settings' && (
               <div className="space-y-8">
                 {currentUser.role === 'admin' && cloudStatus === 'connected' && (
