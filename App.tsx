@@ -30,7 +30,6 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Funzione per garantire che l'admin sia sempre presente - Fixed type annotation to return Operatore[]
   const ensureAdmin = (list: Operatore[]): Operatore[] => {
     const hasAdmin = list.find(o => o.email === ADMIN_EMAIL);
     if (!hasAdmin) {
@@ -40,7 +39,6 @@ const App: React.FC = () => {
     return list;
   };
 
-  // Fixed initialization to ensure defaultOps and parsed data match Operatore[] type
   const [operatori, setOperatori] = useState<Operatore[]>(() => {
     const saved = localStorage.getItem('sm_operatori');
     const defaultOps: Operatore[] = [{ id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' }];
@@ -105,7 +103,6 @@ const App: React.FC = () => {
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
           operatoreEmail: d.operatore_email, incassato: d.incassato, noteAmministrazione: d.note_amministrazione
         }));
-        // Se il cloud ha dati, usiamo quelli. Se è vuoto, manteniamo i locali per sicurezza.
         if (fetched.length > 0) setVendite(fetched);
       }
       
@@ -117,7 +114,6 @@ const App: React.FC = () => {
         if (fetched.length > 0) setAgenti(fetched);
       }
 
-      // Fixed type casting for oRes.data to satisfy ensureAdmin parameter
       if (oRes.data) {
         const fetched = ensureAdmin(oRes.data as Operatore[]);
         if (fetched.length > 0) setOperatori(fetched);
@@ -127,7 +123,7 @@ const App: React.FC = () => {
       setCloudStatus('error');
     }
     setIsSyncing(false);
-  }, [supabase, ensureAdmin]);
+  }, [supabase]);
 
   useEffect(() => {
     if (supabase) {
@@ -139,7 +135,6 @@ const App: React.FC = () => {
     }
   }, [supabase, fetchData]);
 
-  // Persistenza locale sempre attiva come backup
   useEffect(() => { localStorage.setItem('sm_vendite', JSON.stringify(vendite)); }, [vendite]);
   useEffect(() => { localStorage.setItem('sm_agenti', JSON.stringify(agenti)); }, [agenti]);
   useEffect(() => { localStorage.setItem('sm_operatori', JSON.stringify(operatori)); }, [operatori]);
@@ -184,7 +179,15 @@ const App: React.FC = () => {
         delete payload.operatoreEmail;
       }
       const { error } = await supabase.from(table).upsert(payload);
-      if (error) throw error;
+      if (error) {
+        // Se c'è un errore di violazione di unicità (email già esistente con altro ID)
+        if (error.code === '23505') {
+          alert(`Errore: L'email "${data.email}" è già registrata nel database Cloud con un altro account.`);
+        } else {
+          console.error(`Errore Supabase (${table}):`, error);
+        }
+        throw error;
+      }
     } catch (e) {
       console.error(`Errore sync ${table}:`, e);
     }
@@ -194,14 +197,13 @@ const App: React.FC = () => {
     if (!supabase) return;
     setIsSyncing(true);
     try {
-      // Carichiamo tutto ciò che abbiamo in locale nel Cloud
       for (const op of operatori) await syncToCloud('operatori', op);
       for (const ag of agenti) await syncToCloud('agenti', ag);
       for (const ve of vendite) await syncToCloud('vendite', ve);
       alert("Tutti i dati locali sono stati caricati nel Cloud!");
       fetchData();
     } catch (e) {
-      alert("Errore durante l'upload massivo.");
+      alert("Errore durante l'upload massivo. Controlla la console.");
     }
     setIsSyncing(false);
   };
@@ -328,7 +330,6 @@ const App: React.FC = () => {
               const updated = operatori.find(x => x.id === o.id) 
                 ? operatori.map(x => x.id === o.id ? o : x)
                 : [...operatori, o];
-              // Result of ensureAdmin(updated) is now explicitly typed as Operatore[]
               setOperatori(ensureAdmin(updated));
               await syncToCloud('operatori', o);
             }} />}

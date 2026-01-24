@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { Operatore } from '../types';
-import { Lock, Mail, LogIn, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Lock, Mail, LogIn, ShieldCheck, AlertCircle, Eye, EyeOff, Search } from 'lucide-react';
 
 interface LoginScreenProps {
   operatori: Operatore[];
@@ -12,18 +13,37 @@ const BRAND_LOGO_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000
 const LoginScreen: React.FC<LoginScreenProps> = ({ operatori, onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    const user = operatori.find(u => u.email.toLowerCase() === email.toLowerCase() && (u.password === password || (!u.password && password === '123')));
+    // Rimuoviamo spazi bianchi accidentali
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = password.trim();
 
-    if (user) {
+    if (!cleanEmail || !cleanPass) {
+      setError('Inserisci sia email che password.');
+      return;
+    }
+
+    // Cerchiamo l'utente
+    const user = operatori.find(u => u.email.toLowerCase() === cleanEmail);
+
+    if (!user) {
+      setError(`Utente "${cleanEmail}" non trovato nel sistema.`);
+      return;
+    }
+
+    // Verifichiamo la password
+    const isPasswordCorrect = user.password === cleanPass || (!user.password && cleanPass === '123');
+
+    if (isPasswordCorrect) {
       onLogin(user);
     } else {
-      setError('Credenziali non valide. Riprova o contatta l\'amministratore.');
+      setError('Password errata per questo utente. Riprova.');
     }
   };
 
@@ -65,13 +85,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ operatori, onLogin }) => {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input 
-                  type="password" 
+                  type={showPassword ? "text" : "password"} 
                   required
                   placeholder="••••••••"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 font-bold focus:ring-4 focus:ring-[#32964D]/10 focus:border-[#32964D] outline-none transition-all"
+                  className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 font-bold focus:ring-4 focus:ring-[#32964D]/10 focus:border-[#32964D] outline-none transition-all"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                 />
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 
@@ -86,7 +113,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ operatori, onLogin }) => {
 
           <div className="mt-8 pt-6 border-t border-slate-100 text-center">
             <div className="flex items-center justify-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" /> Connessione Crittografata
+              <ShieldCheck className="w-4 h-4 text-emerald-500" /> 
+              {operatori.length > 1 ? `${operatori.length} Account Disponibili` : "Connessione Protetta"}
             </div>
           </div>
         </div>
