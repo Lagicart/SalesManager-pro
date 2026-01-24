@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { CheckCircle, Clock, Calendar, Search, Filter, RotateCcw, Pencil, Trash2, ChevronDown, Check, Download, Printer, User, Copy, ArrowUp, ArrowDown, X, Smartphone, Image as ImageIcon, Camera, MessageSquare, Send, UserCircle } from 'lucide-react';
+import { CheckCircle, Clock, Calendar, Search, Filter, RotateCcw, Pencil, Trash2, ChevronDown, Check, Download, Printer, User, Copy, ArrowUp, ArrowDown, X, Smartphone, Image as ImageIcon, Camera, MessageSquare, Send, UserCircle, CheckCircle2 } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -53,7 +53,6 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   const handleOpenChat = (v: Vendita) => {
     setActiveChat(v);
-    // Segna come letto se ci sono nuove notizie e l'ultimo mittente NON sono io
     if (v.nuove_notizie && v.ultimo_mittente !== currentUserNome && onUpdateNotizie) {
       onUpdateNotizie(v.id, v.notizie || '', false, v.ultimo_mittente || '');
     }
@@ -61,45 +60,67 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   const handleSendMessage = () => {
     if (!newMessage.trim() || !activeChat || !onUpdateNotizie || !currentUserNome) return;
-    
     const timestamp = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
     const formattedMsg = `[${currentUserNome}|${timestamp}] ${newMessage.trim()}`;
     const updatedNotizie = activeChat.notizie ? `${activeChat.notizie}\n${formattedMsg}` : formattedMsg;
-    
-    // Invia il messaggio: imposta nuove_notizie a true e me come ultimo_mittente
     onUpdateNotizie(activeChat.id, updatedNotizie, true, currentUserNome);
     setNewMessage('');
-    // Aggiornamento ottimistico locale per non aspettare il sync
     setActiveChat({...activeChat, notizie: updatedNotizie, nuove_notizie: true, ultimo_mittente: currentUserNome});
   };
 
   return (
     <div className="space-y-4">
-      {/* Chat Modal (WhatsApp Style) */}
+      {/* Receipt Modal (Anteprima) */}
+      {selectedReceipt && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[300] flex items-center justify-center p-6 no-print animate-in fade-in duration-300">
+          <button onClick={() => setSelectedReceipt(null)} className="absolute top-6 right-6 bg-white/10 hover:bg-white/20 text-white p-3 rounded-2xl transition-all"><X className="w-6 h-6" /></button>
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden border-[12px] border-emerald-50 text-center p-10 space-y-8">
+            <div className={`p-6 -m-10 mb-6 flex flex-col items-center ${selectedReceipt.incassato ? 'bg-[#32964D]' : 'bg-orange-500'}`}>
+              <Camera className="w-10 h-10 text-white mb-2" />
+              <h4 className="text-white text-xs font-black uppercase tracking-widest">
+                {selectedReceipt.incassato ? 'Ricevuta Incasso Confermata' : 'Anteprima Pratica Pendente'}
+              </h4>
+            </div>
+            <div className="space-y-1">
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Cliente</p>
+              <h2 className="text-3xl font-black text-slate-900 uppercase leading-none">{selectedReceipt.cliente}</h2>
+            </div>
+            <div className="bg-slate-50 rounded-3xl p-8 border border-slate-100">
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Importo</p>
+              <h1 className={`text-5xl font-black tracking-tighter ${selectedReceipt.incassato ? 'text-[#32964D]' : 'text-slate-900'}`}>
+                € {selectedReceipt.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}
+              </h1>
+            </div>
+            {selectedReceipt.noteAmministrazione && (
+              <div className="bg-emerald-900 text-white p-4 rounded-2xl">
+                 <p className="text-[10px] font-black uppercase tracking-widest opacity-50">Amministrazione</p>
+                 <p className="font-bold">{selectedReceipt.noteAmministrazione}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Chat Modal */}
       {activeChat && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-[#e5ddd5] w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden flex flex-col h-[85vh] border border-white/20">
-            {/* Header Chat */}
             <div className="bg-[#075e54] p-5 text-white flex justify-between items-center shadow-lg">
               <div className="flex items-center gap-4">
-                <div className="bg-white/20 p-2.5 rounded-2xl shadow-inner"><MessageSquare className="w-6 h-6" /></div>
+                <div className="bg-white/20 p-2.5 rounded-2xl"><MessageSquare className="w-6 h-6" /></div>
                 <div>
-                  <h3 className="font-bold text-lg leading-tight truncate max-w-[180px] uppercase tracking-tight">{activeChat.cliente}</h3>
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Cronologia Pratica</p>
+                  <h3 className="font-bold text-lg leading-tight truncate max-w-[180px] uppercase">{activeChat.cliente}</h3>
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Chat Pratica</p>
                 </div>
               </div>
               <button onClick={() => setActiveChat(null)} className="hover:bg-black/10 p-2 rounded-xl transition-all"><X className="w-6 h-6" /></button>
             </div>
-
-            {/* Body Chat */}
             <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
               {activeChat.notizie ? activeChat.notizie.split('\n').filter(l => l.trim()).map((line, i) => {
                 const parts = line.match(/\[(.*)\|(.*)\] (.*)/);
-                if (!parts) return <div key={i} className="text-xs bg-white/80 p-3 rounded-2xl shadow-sm border border-slate-200 text-slate-600">{line}</div>;
-                
+                if (!parts) return <div key={i} className="text-xs bg-white/80 p-3 rounded-2xl shadow-sm border border-slate-200">{line}</div>;
                 const [_, sender, time, text] = parts;
                 const isMe = sender === currentUserNome;
-
                 return (
                   <div key={i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2 duration-300`}>
                     <div className={`max-w-[85%] p-3.5 rounded-2xl shadow-sm relative ${isMe ? 'bg-[#dcf8c6] text-slate-800 rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none'}`}>
@@ -120,30 +141,23 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
               )}
               <div ref={chatEndRef} />
             </div>
-
-            {/* Input Chat */}
             <div className="p-5 bg-[#f0f0f0] border-t border-slate-200">
               <div className="flex gap-2">
                 <input 
                   type="text" placeholder="Scrivi un messaggio..."
-                  className="flex-1 bg-white border-none rounded-full px-6 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-[#075e54]/20 transition-all shadow-sm"
+                  className="flex-1 bg-white border-none rounded-full px-6 py-4 text-sm font-bold outline-none shadow-sm"
                   value={newMessage}
                   onChange={e => setNewMessage(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
                 />
-                <button 
-                  onClick={handleSendMessage}
-                  className="bg-[#075e54] text-white p-4 rounded-full shadow-lg hover:bg-[#128c7e] active:scale-90 transition-all"
-                >
-                  <Send className="w-5 h-5" />
-                </button>
+                <button onClick={handleSendMessage} className="bg-[#075e54] text-white p-4 rounded-full shadow-lg hover:bg-[#128c7e] transition-all"><Send className="w-5 h-5" /></button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Filters & Table UI (unchanged logic, just ensuring props) */}
+      {/* Filtri */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 filter-panel no-print">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input type="text" placeholder="Cliente..." className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" value={filters.cliente} onChange={e => setFilters({...filters, cliente: e.target.value})} />
@@ -164,17 +178,17 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cliente</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Chat</th>
+                <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Stato</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Importo</th>
                 <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right no-print">Azioni</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredData.map((v) => {
-                // LOGICA ICONA: Blu solo se ci sono nuove notizie E non sono l'ultimo mittente
                 const hasUnread = v.nuove_notizie && v.ultimo_mittente !== currentUserNome;
 
                 return (
-                  <tr key={v.id} className={`hover:bg-slate-50/80 transition-colors ${v.incassato ? 'bg-emerald-50/10' : ''}`}>
+                  <tr key={v.id} className={`hover:bg-slate-50/80 transition-colors ${v.incassato ? 'bg-emerald-50/30' : ''}`}>
                     <td className="px-6 py-4 text-xs font-bold text-slate-400">{new Date(v.data).toLocaleDateString('it-IT')}</td>
                     <td className="px-6 py-4">
                       <div className="font-bold text-slate-900 truncate max-w-[200px] uppercase leading-tight">{v.cliente}</div>
@@ -183,21 +197,40 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                     <td className="px-6 py-4 text-center">
                       <button 
                         onClick={() => handleOpenChat(v)}
-                        className={`p-3 rounded-2xl transition-all relative ${hasUnread ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30 scale-110' : (v.notizie ? 'bg-slate-100 text-slate-600' : 'text-slate-300 hover:text-slate-500')}`}
+                        className={`p-3 rounded-2xl transition-all relative ${hasUnread ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : (v.notizie ? 'bg-slate-100 text-slate-600' : 'text-slate-300 hover:text-slate-500')}`}
                       >
                         <MessageSquare className={`w-5 h-5 ${hasUnread ? 'animate-pulse' : ''}`} />
                         {hasUnread && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 border-2 border-white rounded-full flex items-center justify-center text-[8px] font-black">!</span>}
                       </button>
                     </td>
+                    <td className="px-6 py-4 text-center">
+                      {v.incassato ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-200 shadow-sm">
+                          <CheckCircle2 className="w-3 h-3" /> Incassato
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-orange-200 animate-pulse">
+                          <Clock className="w-3 h-3" /> Pendente
+                        </span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
-                      <div className={`text-sm font-black ${v.incassato ? 'text-emerald-600' : 'text-slate-900'}`}>€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</div>
-                      <div className={`text-[9px] font-black uppercase tracking-widest ${v.incassato ? 'text-emerald-500' : 'text-amber-500'}`}>{v.incassato ? 'Incassato' : 'Pendente'}</div>
+                      <div className={`text-sm font-black ${v.incassato ? 'text-emerald-700' : 'text-slate-900'}`}>€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</div>
                     </td>
                     <td className="px-6 py-4 no-print text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setSelectedReceipt(v)} className="p-2 text-slate-300 hover:text-emerald-500 transition-colors"><Camera className="w-5 h-5" /></button>
-                        <button onClick={() => onEdit(v)} className="p-2 text-slate-300 hover:text-amber-500 transition-colors"><Pencil className="w-4 h-4" /></button>
-                        {isAdmin && <button onClick={() => onDelete(v.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors"><Trash2 className="w-4 h-4" /></button>}
+                        {!v.incassato && (
+                          <button 
+                            onClick={() => onIncasso(v.id)} 
+                            className="p-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl transition-all shadow-sm border border-emerald-100"
+                            title="Conferma Incasso"
+                          >
+                            <CheckCircle2 className="w-5 h-5" />
+                          </button>
+                        )}
+                        <button onClick={() => setSelectedReceipt(v)} className="p-2.5 text-slate-300 hover:text-[#32964D] hover:bg-slate-100 rounded-xl transition-all" title="Anteprima Ricevuta"><Camera className="w-5 h-5" /></button>
+                        <button onClick={() => onEdit(v)} className="p-2.5 text-slate-300 hover:text-amber-500 hover:bg-slate-100 rounded-xl transition-all"><Pencil className="w-4 h-4" /></button>
+                        {isAdmin && <button onClick={() => onDelete(v.id)} className="p-2.5 text-slate-300 hover:text-rose-500 hover:bg-slate-100 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>}
                       </div>
                     </td>
                   </tr>
