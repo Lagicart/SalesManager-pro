@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Operatore } from '../types';
-import { LogOut, ShieldCheck, User as UserIcon, Lock, Users, RotateCcw } from 'lucide-react';
+import { LogOut, ShieldCheck, User as UserIcon, Lock, Users, RotateCcw, LayoutGrid } from 'lucide-react';
 
 interface UserSwitcherProps {
   currentUser: Operatore;
@@ -21,60 +21,76 @@ const UserSwitcher: React.FC<UserSwitcherProps> = ({ currentUser, operatori, onL
         <Lock className="w-3 h-3" />
       </div>
       
-      <div className={`p-4 rounded-2xl border transition-all ${isAdmin ? 'bg-amber-500/10 border-amber-500/20' : 'bg-white/5 border-white/10'} flex items-center gap-3`}>
+      {/* Box Profilo Principale */}
+      <div className={`p-4 rounded-2xl border transition-all ${isAdmin ? 'bg-amber-500/10 border-amber-500/20 shadow-lg shadow-amber-500/5' : 'bg-white/5 border-white/10'} flex items-center gap-3 mb-6`}>
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isAdmin ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20'}`}>
           {isAdmin ? <ShieldCheck className="w-5 h-5" /> : <UserIcon className="w-5 h-5" />}
         </div>
         <div className="flex flex-col overflow-hidden">
-          <span className="font-bold truncate text-sm text-white">{currentUser.nome}</span>
-          <span className={`text-[10px] truncate uppercase font-bold tracking-tight ${isAdmin ? 'text-amber-500' : 'text-slate-500'}`}>{currentUser.role}</span>
+          <span className="font-bold truncate text-sm text-white uppercase">{currentUser.nome}</span>
+          <span className={`text-[10px] truncate uppercase font-black tracking-tight ${isAdmin ? 'text-amber-500' : 'text-slate-500'}`}>{currentUser.role}</span>
         </div>
       </div>
 
-      {/* SELETTORE VISTA PER ADMIN */}
+      {/* SEZIONE PULSANTI NAVIGAZIONE PER ADMIN */}
       {isAdmin && (
-        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 space-y-3">
-          <div className="flex items-center justify-between">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
             <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-              <Users className="w-3 h-3" /> Filtra Vista Per
+              <Users className="w-3 h-3" /> Filtra Vista
             </label>
-            {viewAsEmail && (
-              <button 
-                onClick={() => onViewAsChange(null)}
-                className="text-[9px] font-black text-rose-400 hover:text-rose-300 uppercase flex items-center gap-1"
-              >
-                <RotateCcw className="w-2.5 h-2.5" /> Reset
-              </button>
-            )}
           </div>
-          <select 
-            className="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-slate-300 outline-none focus:border-amber-500 transition-all cursor-pointer"
-            value={viewAsEmail || ''}
-            onChange={(e) => onViewAsChange(e.target.value || null)}
-          >
-            <option value="">Tutta l'Azienda</option>
-            {operatori.filter(o => o.role !== 'admin' || o.email !== currentUser.email).map(op => (
-              <option key={op.id} value={op.email}>{op.nome}</option>
-            ))}
-          </select>
+          
+          <div className="flex flex-col gap-2">
+            {/* Pulsante Vista Totale */}
+            <button
+              onClick={() => onViewAsChange(null)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all border ${!viewAsEmail ? 'bg-[#32964D] border-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'bg-white/5 border-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}
+            >
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${!viewAsEmail ? 'bg-white/20' : 'bg-slate-800'}`}>
+                <LayoutGrid className="w-3 h-3" />
+              </div>
+              <span>TUTTA L'AZIENDA</span>
+            </button>
+
+            {/* Lista Operatori come Pulsanti */}
+            {operatori
+              .filter(o => o.role !== 'admin' || o.email !== currentUser.email)
+              .map(op => (
+                <button
+                  key={op.id}
+                  onClick={() => onViewAsChange(op.email)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all border ${viewAsEmail === op.email ? 'bg-[#32964D] border-[#32964D] text-white shadow-lg shadow-[#32964D]/20 scale-[1.02]' : 'bg-white/5 border-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}
+                >
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-black ${viewAsEmail === op.email ? 'bg-white/20' : 'bg-slate-800 text-slate-500'}`}>
+                    {op.nome.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="truncate uppercase">{op.nome}</span>
+                </button>
+              ))
+            }
+          </div>
+          
           {viewAsEmail && (
-            <p className="text-[9px] text-amber-500/70 italic leading-tight">
-              Stai visualizzando l'app come se fossi l'operatore selezionato.
+            <p className="text-[9px] text-amber-500/70 italic leading-tight px-1 animate-pulse">
+              ● Modalità simulazione attiva
             </p>
           )}
         </div>
       )}
 
-      <button
-        onClick={() => {
-          if (window.confirm("Sei sicuro di voler uscire?")) {
-            onLogout();
-          }
-        }}
-        className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white transition-all font-bold text-xs"
-      >
-        <LogOut className="w-4 h-4" /> DISCONNETTI
-      </button>
+      <div className="pt-4 mt-4 border-t border-white/5">
+        <button
+          onClick={() => {
+            if (window.confirm("Sei sicuro di voler uscire?")) {
+              onLogout();
+            }
+          }}
+          className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white transition-all font-bold text-[10px] tracking-widest uppercase border border-rose-500/20"
+        >
+          <LogOut className="w-3 h-3" /> DISCONNETTI
+        </button>
+      </div>
     </div>
   );
 };
