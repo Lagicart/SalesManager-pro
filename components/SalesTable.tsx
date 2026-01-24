@@ -78,12 +78,12 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   return (
     <div className="space-y-4">
-      {/* Receipt Modal (OTTIMIZZATA PER CELLULARE) */}
+      {/* Receipt Modal (OTTIMIZZATA PER CELLULARE E SCREENSHOT) */}
       {selectedReceipt && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[300] flex items-center justify-center p-4 no-print animate-in fade-in duration-300">
           <button onClick={() => setSelectedReceipt(null)} className="absolute top-6 right-6 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-all"><X className="w-8 h-8" /></button>
           
-          <div className="bg-white w-full max-w-sm rounded-[3.5rem] shadow-2xl overflow-hidden border-[16px] border-emerald-50/50 relative shadow-emerald-900/40">
+          <div className="bg-white w-full max-w-md rounded-[3.5rem] shadow-2xl overflow-hidden border-[16px] border-emerald-50/50 relative shadow-emerald-900/40">
             {/* Header Ricevuta */}
             <div className={`p-10 text-center ${selectedReceipt.incassato ? 'bg-[#32964D]' : 'bg-amber-600'}`}>
               <div className="bg-white/20 w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-inner animate-pulse">
@@ -101,7 +101,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
             <div className="p-10 space-y-8">
               <div className="space-y-1.5 text-center">
                 <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Nominativo Cliente</p>
-                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-tight break-words">{selectedReceipt.cliente}</h3>
+                <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-tight break-words">{selectedReceipt.cliente}</h3>
               </div>
 
               <div className="bg-slate-50 rounded-[2.5rem] p-8 text-center border-2 border-slate-100/50 shadow-inner">
@@ -127,7 +127,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 </div>
                 <div className="bg-slate-50/50 p-4 rounded-3xl border border-slate-100/50">
                   <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Agente</p>
-                  <p className="text-xs font-black text-slate-800 uppercase truncate">{selectedReceipt.agente}</p>
+                  <p className="text-xs font-black text-slate-800 uppercase leading-tight">{selectedReceipt.agente}</p>
                 </div>
                 <div className="bg-slate-50/50 p-4 rounded-3xl border border-slate-100/50">
                   <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Pendenza</p>

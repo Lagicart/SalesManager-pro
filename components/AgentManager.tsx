@@ -213,7 +213,18 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Operatore Responsabile</label>
-                <input disabled className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none opacity-50" value={formData.operatoreEmail} />
+                <select 
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                  value={formData.operatoreEmail}
+                  onChange={e => setFormData({...formData, operatoreEmail: e.target.value})}
+                >
+                  {operatori.map(op => (
+                    <option key={op.id} value={op.email}>
+                      {op.nome} ({op.email})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <button className="w-full bg-[#32964D] hover:bg-[#2b7e41] text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 mt-4 shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs">
