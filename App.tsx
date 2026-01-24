@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
 import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<'connected' | 'error' | 'none'>('none');
+  const lastFetchRef = useRef<number>(0);
 
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('sm_is_logged_in') === 'true');
   const [currentUser, setCurrentUser] = useState<Operatore | null>(() => {
@@ -31,7 +32,7 @@ const App: React.FC = () => {
   });
 
   const ensureAdmin = (list: Operatore[]): Operatore[] => {
-    const hasAdmin = list.find(o => o.email === ADMIN_EMAIL);
+    const hasAdmin = list.find(o => o.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
     if (!hasAdmin) {
       const adminOp: Operatore = { id: 'op-admin', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' };
       return [adminOp, ...list];
@@ -86,8 +87,13 @@ const App: React.FC = () => {
     }
   }, [dbConfig]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (force = false) => {
     if (!supabase) return;
+    
+    // Evitiamo fetch troppo frequenti (max 1 ogni 2 secondi) a meno che non sia forzato
+    const now = Date.now();
+    if (!force && now - lastFetchRef.current < 2000) return;
+    lastFetchRef.current = now;
 
     setIsSyncing(true);
     try {
@@ -98,36 +104,51 @@ const App: React.FC = () => {
       ]);
 
       if (vRes.data) {
-        const fetched = vRes.data.map(d => ({
+        const cloudData = vRes.data.map(d => ({
           id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
           operatoreEmail: d.operatore_email, incassato: d.incassato, noteAmministrazione: d.note_amministrazione
         }));
-        if (fetched.length > 0) setVendite(fetched);
+        // Merge: mantieni locali se non in cloud
+        setVendite(prev => {
+          const cloudIds = new Set(cloudData.map(d => d.id));
+          const onlyLocal = prev.filter(p => !cloudIds.has(p.id));
+          return [...cloudData, ...onlyLocal];
+        });
       }
       
       if (aRes.data) {
-        const fetched = aRes.data.map(d => ({ 
+        const cloudData = aRes.data.map(d => ({ 
           id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email,
           telefono: d.telefono, zona: d.zona
         }));
-        if (fetched.length > 0) setAgenti(fetched);
+        setAgenti(prev => {
+          const cloudIds = new Set(cloudData.map(d => d.id));
+          const onlyLocal = prev.filter(p => !cloudIds.has(p.id));
+          return [...cloudData, ...onlyLocal];
+        });
       }
 
       if (oRes.data) {
-        const fetched = ensureAdmin(oRes.data as Operatore[]);
-        if (fetched.length > 0) setOperatori(fetched);
+        const cloudData = ensureAdmin(oRes.data as Operatore[]);
+        setOperatori(prev => {
+          const cloudIds = new Set(cloudData.map(d => d.id));
+          const onlyLocal = prev.filter(p => !cloudIds.has(p.id));
+          return [...cloudData, ...onlyLocal];
+        });
       }
+      setCloudStatus('connected');
     } catch (e) {
       console.error("Errore fetch Cloud:", e);
       setCloudStatus('error');
+    } finally {
+      setIsSyncing(false);
     }
-    setIsSyncing(false);
   }, [supabase]);
 
   useEffect(() => {
     if (supabase) {
-      fetchData();
+      fetchData(true);
       const vSub = supabase.channel('v-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData()).subscribe();
       const oSub = supabase.channel('o-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData()).subscribe();
       const aSub = supabase.channel('a-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData()).subscribe();
@@ -180,11 +201,8 @@ const App: React.FC = () => {
       }
       const { error } = await supabase.from(table).upsert(payload);
       if (error) {
-        // Se c'è un errore di violazione di unicità (email già esistente con altro ID)
         if (error.code === '23505') {
-          alert(`Errore: L'email "${data.email}" è già registrata nel database Cloud con un altro account.`);
-        } else {
-          console.error(`Errore Supabase (${table}):`, error);
+          alert(`Errore: L'email "${data.email}" è già presente con un altro ID.`);
         }
         throw error;
       }
@@ -201,23 +219,24 @@ const App: React.FC = () => {
       for (const ag of agenti) await syncToCloud('agenti', ag);
       for (const ve of vendite) await syncToCloud('vendite', ve);
       alert("Tutti i dati locali sono stati caricati nel Cloud!");
-      fetchData();
+      fetchData(true);
     } catch (e) {
-      alert("Errore durante l'upload massivo. Controlla la console.");
+      alert("Errore durante l'upload massivo.");
+    } finally {
+      setIsSyncing(false);
     }
-    setIsSyncing(false);
   };
 
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === 'admin') return vendite;
-    return vendite.filter(v => v.operatoreEmail === currentUser.email);
+    return vendite.filter(v => v.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
   }, [vendite, currentUser]);
 
   const filteredAgenti = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === 'admin') return agenti;
-    return agenti.filter(a => a.operatoreEmail === currentUser.email);
+    return agenti.filter(a => a.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
   }, [agenti, currentUser]);
 
   if (!isLoggedIn || !currentUser) {
@@ -275,7 +294,7 @@ const App: React.FC = () => {
              )}
              {isSyncing && (
                <div className="flex items-center gap-2 text-emerald-400 text-[9px] animate-pulse">
-                 <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Aggiornamento in corso...
+                 <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Aggiornamento...
                </div>
              )}
           </div>
