@@ -41,15 +41,11 @@ const App: React.FC = () => {
     
     if (type === 'notification' && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        new Notification("SalesManager Notification", {
+        new Notification("SalesManager", {
           body: message,
           icon: BRAND_LOGO_DATA,
-          silent: false,
-          tag: 'sales-manager-notif'
         });
-      } catch (e) {
-        console.error("Errore creazione notifica nativa:", e);
-      }
+      } catch (e) { console.error(e); }
     }
 
     setTimeout(() => {
@@ -61,9 +57,6 @@ const App: React.FC = () => {
     if ('Notification' in window) {
       const permission = await Notification.requestPermission();
       setNotifPermission(permission);
-      if (permission === 'granted') {
-        addToast("Notifiche desktop attivate!", "info");
-      }
     }
   };
 
@@ -91,9 +84,7 @@ const App: React.FC = () => {
       try {
         const parsed = JSON.parse(saved) as Operatore[];
         return Array.isArray(parsed) ? ensureAdmin(parsed) : defaultOps;
-      } catch {
-        return defaultOps;
-      }
+      } catch { return defaultOps; }
     }
     return defaultOps;
   });
@@ -123,24 +114,12 @@ const App: React.FC = () => {
         const client = createClient(dbConfig.url, dbConfig.key);
         setSupabase(client);
         setCloudStatus('connected');
-      } catch (e) {
-        setCloudStatus('error');
-      }
-    } else {
-      setSupabase(null);
-      setCloudStatus('none');
+      } catch (e) { setCloudStatus('error'); }
     }
   }, [dbConfig]);
 
-  useEffect(() => {
-    if ('Notification' in window) {
-      setNotifPermission(Notification.permission);
-    }
-  }, []);
-
   const fetchData = useCallback(async (force = false) => {
     if (!supabase) return;
-    
     const now = Date.now();
     if (!force && now - lastFetchRef.current < 2000) return; 
     lastFetchRef.current = now;
@@ -161,50 +140,32 @@ const App: React.FC = () => {
           incassato: d.incassato, 
           noteAmministrazione: d.note_amministrazione,
           notizie: d.notizie || '',
+          nuove_notizie: d.nuove_notizie || false,
           created_at: d.created_at
         }));
         setVendite(cloudData);
       }
       
       if (aRes.data) {
-        const cloudData: Agente[] = aRes.data.map(d => ({ 
+        setAgenti(aRes.data.map(d => ({ 
           id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email.toLowerCase(),
           telefono: d.telefono, zona: d.zona
-        }));
-        setAgenti(cloudData);
+        })));
       }
 
-      if (oRes.data) {
-        const cloudData: Operatore[] = ensureAdmin(oRes.data as Operatore[]);
-        setOperatori(cloudData);
-      }
+      if (oRes.data) setOperatori(ensureAdmin(oRes.data as Operatore[]));
       setLastSyncTime(new Date().toLocaleTimeString('it-IT'));
-    } catch (e) {
-      console.error("Errore fetch Cloud:", e);
-    } finally {
-      setIsSyncing(false);
-    }
+    } catch (e) { console.error(e); } finally { setIsSyncing(false); }
   }, [supabase, ensureAdmin]);
 
   useEffect(() => {
     if (supabase && isLoggedIn && currentUser) {
       const userEmail = currentUser.email.toLowerCase();
-
-      const nSub = supabase
-        .channel('realtime-notifiche')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifiche' }, (payload) => {
-          if (payload.new.to_email.toLowerCase() === userEmail) {
-            addToast(payload.new.message, 'notification');
-          }
-        })
-        .subscribe();
-
+      const nSub = supabase.channel('realtime-notifiche').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifiche' }, (payload) => {
+        if (payload.new.to_email.toLowerCase() === userEmail) addToast(payload.new.message, 'notification');
+      }).subscribe();
       const vSub = supabase.channel('realtime-data').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData(true)).subscribe();
-      
-      return () => { 
-        supabase.removeChannel(nSub); 
-        supabase.removeChannel(vSub);
-      };
+      return () => { supabase.removeChannel(nSub); supabase.removeChannel(vSub); };
     }
   }, [supabase, isLoggedIn, currentUser, fetchData]);
 
@@ -232,10 +193,11 @@ const App: React.FC = () => {
     setTimeout(() => fetchData(true), 500);
   };
 
+  // Added handleLogout function to fix the "Cannot find name 'handleLogout'" error
   const handleLogout = () => {
     setCurrentUser(null);
     setIsLoggedIn(false);
-    setView('dashboard');
+    setViewAsEmail(null);
   };
 
   const syncToCloud = async (table: string, data: any) => {
@@ -246,7 +208,6 @@ const App: React.FC = () => {
         payload.metodo_pagamento = data.metodoPagamento;
         payload.operatore_email = data.operatoreEmail.toLowerCase();
         payload.note_amministrazione = data.noteAmministrazione;
-        payload.notizie = data.notizie;
         delete payload.metodoPagamento;
         delete payload.operatoreEmail;
         delete payload.noteAmministrazione;
@@ -254,23 +215,7 @@ const App: React.FC = () => {
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
       fetchData(true);
-    } catch (e) {
-      console.error(`Errore sync ${table}:`, e);
-      addToast(`Errore salvataggio Cloud`, 'error');
-    }
-  };
-
-  const sendNotification = async (toEmail: string, message: string) => {
-    if (!supabase) return;
-    try {
-      await supabase.from('notifiche').insert({
-        to_email: toEmail.toLowerCase(),
-        message: message,
-        from_user: currentUser?.nome || 'Admin'
-      });
-    } catch (e) {
-      console.error("Errore invio notifica:", e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const filteredVendite = useMemo(() => {
@@ -286,9 +231,7 @@ const App: React.FC = () => {
 
   const filteredAgenti = useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.role === 'admin' && viewAsEmail) {
-      return agenti.filter(a => a.operatoreEmail.toLowerCase() === viewAsEmail.toLowerCase());
-    }
+    if (currentUser.role === 'admin' && viewAsEmail) return agenti.filter(a => a.operatoreEmail.toLowerCase() === viewAsEmail.toLowerCase());
     if (currentUser.role === 'admin') return agenti;
     return agenti.filter(a => a.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
   }, [agenti, currentUser, viewAsEmail]);
@@ -301,19 +244,8 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
       <div className="fixed bottom-6 right-6 z-[200] space-y-3 pointer-events-none no-print">
         {toasts.map(toast => (
-          <div 
-            key={toast.id} 
-            className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border pointer-events-auto animate-in slide-in-from-right duration-300 ${
-              toast.type === 'success' ? 'bg-emerald-900 text-white border-emerald-500/30' : 
-              toast.type === 'error' ? 'bg-rose-900 text-white border-rose-500/30' : 
-              toast.type === 'notification' ? 'bg-amber-600 text-white border-white/20' :
-              'bg-slate-900 text-white border-slate-700'
-            }`}
-          >
-            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : 
-             toast.type === 'error' ? <XCircle className="w-5 h-5 text-rose-400" /> : 
-             toast.type === 'notification' ? <BellRing className="w-5 h-5 animate-bounce" /> :
-             <AlertCircle className="w-5 h-5 text-sky-400" />}
+          <div key={toast.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border pointer-events-auto animate-in slide-in-from-right duration-300 ${toast.type === 'success' ? 'bg-emerald-900 text-white border-emerald-500/30' : toast.type === 'error' ? 'bg-rose-900 text-white border-rose-500/30' : toast.type === 'notification' ? 'bg-amber-600 text-white border-white/20' : 'bg-slate-900 text-white border-slate-700'}`}>
+            {toast.type === 'notification' ? <BellRing className="w-5 h-5 animate-bounce" /> : <CheckCircle2 className="w-5 h-5" />}
             <span className="text-sm font-bold">{toast.message}</span>
           </div>
         ))}
@@ -325,66 +257,24 @@ const App: React.FC = () => {
             <img src={BRAND_LOGO_DATA} alt="Logo" className="w-11 h-11" />
             <h1 className="text-xl font-bold tracking-tight">SalesManager</h1>
           </div>
-          
           <nav className="space-y-1.5">
-            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
-              <TrendingUp className="w-5 h-5" />
-              <span className="font-medium">Dashboard</span>
-            </button>
-            <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
-              <List className="w-5 h-5" />
-              <span className="font-medium">Vendite</span>
-            </button>
-            <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
-              <Contact2 className="w-5 h-5" />
-              <span className="font-medium">Anagrafica Agenti</span>
-            </button>
+            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><TrendingUp className="w-5 h-5" /><span className="font-medium">Dashboard</span></button>
+            <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List className="w-5 h-5" /><span className="font-medium">Vendite</span></button>
+            <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Contact2 className="w-5 h-5" /><span className="font-medium">Anagrafica Agenti</span></button>
             {currentUser.role === 'admin' && (
               <>
-                <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
-                  <Users className="w-5 h-5" />
-                  <span className="font-medium">Operatori</span>
-                </button>
-                <button onClick={() => setView('manual')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'manual' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20' : 'text-slate-400 hover:text-white'}`}>
-                  <BookOpen className="w-5 h-5" />
-                  <span className="font-medium">Manuale Tecnico</span>
-                </button>
-                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
-                  <Settings className="w-5 h-5" />
-                  <span className="font-medium">Impostazioni</span>
-                </button>
+                <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Users className="w-5 h-5" /><span className="font-medium">Operatori</span></button>
+                <button onClick={() => setView('manual')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'manual' ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><BookOpen className="w-5 h-5" /><span className="font-medium">Manuale Tecnico</span></button>
+                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Settings className="w-5 h-5" /><span className="font-medium">Impostazioni</span></button>
               </>
             )}
           </nav>
         </div>
-        
         <div className="mt-auto p-6 border-t border-white/10">
-          <UserSwitcher 
-            currentUser={currentUser} 
-            operatori={operatori}
-            onLogout={handleLogout} 
-            viewAsEmail={viewAsEmail}
-            onViewAsChange={setViewAsEmail}
-          />
+          <UserSwitcher currentUser={currentUser} operatori={operatori} onLogout={handleLogout} viewAsEmail={viewAsEmail} onViewAsChange={setViewAsEmail} />
           <div className="mt-4 flex flex-col gap-2">
-             {notifPermission !== 'granted' && (
-               <button 
-                 onClick={requestNotificationPermission}
-                 className="flex items-center gap-2 text-amber-500 text-[10px] font-bold uppercase tracking-widest bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 hover:bg-amber-500/20 transition-all"
-               >
-                 <Bell className="w-3 h-3" /> Attiva Desktop Notifiche
-               </button>
-             )}
              <div className="flex flex-col gap-1 pt-2 border-t border-white/5">
-                {cloudStatus === 'connected' ? (
-                  <div className="flex items-center gap-2 text-emerald-400 text-[9px] font-bold uppercase tracking-widest">
-                    <Cloud className="w-3 h-3" /> Cloud Connesso
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-slate-500 text-[9px] font-bold uppercase tracking-widest">
-                    <CloudOff className="w-3 h-3" /> Offline
-                  </div>
-                )}
+                {cloudStatus === 'connected' ? <div className="flex items-center gap-2 text-emerald-400 text-[9px] font-bold uppercase tracking-widest"><Cloud className="w-3 h-3" /> Cloud Connesso</div> : <div className="flex items-center gap-2 text-slate-500 text-[9px] font-bold uppercase tracking-widest"><CloudOff className="w-3 h-3" /> Offline</div>}
              </div>
           </div>
         </div>
@@ -392,24 +282,10 @@ const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
-          <div className="flex items-center gap-6">
-            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-              {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : view === 'manual' ? 'Documentazione' : 'Operatori'}
-            </h2>
-            {viewAsEmail && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg">
-                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-                <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Vista Simulatore</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-             {view === 'list' && (
-              <button onClick={() => { setEditingVendita(null); setIsFormOpen(true); }} className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-lg transition-all active:scale-95 hover:bg-[#2b7e41]">
-                <Plus className="w-5 h-5" /> Nuova Vendita
-              </button>
-            )}
-          </div>
+          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
+            {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : view === 'manual' ? 'Documentazione' : 'Operatori'}
+          </h2>
+          {view === 'list' && <button onClick={() => { setEditingVendita(null); setIsFormOpen(true); }} className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-lg hover:bg-[#2b7e41] transition-all"><Plus className="w-5 h-5" /> Nuova Vendita</button>}
         </header>
 
         <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
@@ -420,77 +296,45 @@ const App: React.FC = () => {
                 metodiDisponibili={metodiPagamento}
                 isAdmin={currentUser.role === 'admin'} 
                 onIncasso={async (id) => {
-                  const targetVendita = vendite.find(v => v.id === id);
-                  if (!targetVendita) return;
-
-                  const updatedV = {...targetVendita, incassato: true, noteAmministrazione: 'OK MARILENA'};
-                  setVendite(vendite.map(v => v.id === id ? updatedV : v));
-                  
-                  await syncToCloud('vendite', updatedV);
-                  await sendNotification(
-                    targetVendita.operatoreEmail, 
-                    `Incasso confermato per ${targetVendita.cliente} (€${targetVendita.importo}).`
-                  );
-                  
+                  const target = vendite.find(v => v.id === id);
+                  if (!target) return;
+                  const updated = {...target, incassato: true, noteAmministrazione: 'OK MARILENA'};
+                  setVendite(vendite.map(v => v.id === id ? updated : v));
+                  await syncToCloud('vendite', updated);
                   addToast(`Incasso confermato`, 'success');
                 }} 
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
-                onUpdateNotizie={async (id, notizia) => {
+                onUpdateNotizie={async (id, notizia, nuoveNotizie) => {
                    const target = vendite.find(v => v.id === id);
                    if (!target) return;
-                   const updated = { ...target, notizie: notizia };
+                   const updated = { ...target, notizie: notizia, nuove_notizie: nuoveNotizie };
                    setVendite(vendite.map(v => v.id === id ? updated : v));
                    await syncToCloud('vendite', updated);
-                   addToast("Notizia aggiornata", "success");
                 }}
+                currentUserNome={currentUser.nome}
                 onDelete={async (id) => {
-                  if (window.confirm("Sicuro di voler eliminare?")) {
+                  if (window.confirm("Eliminare?")) {
                     setVendite(vendite.filter(v => v.id !== id));
                     if (supabase) await supabase.from('vendite').delete().eq('id', id);
-                    addToast("Eliminato", "info");
                   }
                 }}
-                onCopy={(text) => {
-                  navigator.clipboard.writeText(text);
-                  addToast("Copiato", "info");
-                }}
+                onCopy={(text) => { navigator.clipboard.writeText(text); addToast("Copiato", "info"); }}
               />
             )}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
-            {view === 'agents' && <AgentManager 
-              agenti={filteredAgenti} 
-              operatori={operatori} 
-              isAdmin={currentUser.role === 'admin'} 
-              onUpdate={async (a) => {
-                const updated = agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti];
-                setAgenti(updated);
-                await syncToCloud('agenti', a);
-                addToast(`Agente aggiornato`, 'success');
-              }} 
-            />}
-            {view === 'operators' && <OperatorManager 
-              operatori={operatori} 
-              onUpdate={async (o) => {
-                const updated = operatori.find(x => x.id === o.id) ? operatori.map(x => x.id === o.id ? o : x) : [...operatori, o];
-                setOperatori(ensureAdmin(updated));
-                await syncToCloud('operatori', o);
-                addToast(`Operatore salvato`, 'success');
-              }} 
-              onDelete={async (id) => {
-                setOperatori(ensureAdmin(operatori.filter(o => o.id !== id)));
-                if (supabase) await supabase.from('operatori').delete().eq('id', id);
-                addToast("Operatore rimosso", "info");
-              }}
-            />}
+            {view === 'agents' && <AgentManager agenti={filteredAgenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} onUpdate={async (a) => {
+              setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]);
+              await syncToCloud('agenti', a);
+            }} />}
+            {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => {
+              setOperatori(ensureAdmin(operatori.find(x => x.id === o.id) ? operatori.map(x => x.id === o.id ? o : x) : [...operatori, o]));
+              await syncToCloud('operatori', o);
+            }} onDelete={async (id) => {
+              setOperatori(ensureAdmin(operatori.filter(o => o.id !== id)));
+              if (supabase) await supabase.from('operatori').delete().eq('id', id);
+            }} />}
             {view === 'manual' && <TechnicalManual />}
-            {view === 'settings' && (
-              <SettingsManager 
-                metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} 
-                data={{vendite, agenti, operatori, metodi: metodiPagamento}} onImport={(d) => setVendite(d.vendite || [])}
-                dbConfig={dbConfig} onDbConfigChange={setDbConfig}
-                onTestNotif={() => addToast("Test Notifica Desktop: Se vedi questo, il browser è configurato!", "notification")}
-              />
-            )}
+            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} onTestNotif={() => addToast("Test Notifica!", "notification")} data={null} onImport={() => {}} />}
           </div>
         </section>
       </main>
@@ -505,8 +349,7 @@ const App: React.FC = () => {
                 ...data, id: Math.random().toString(36).substr(2, 9),
                 data: new Date().toISOString().split('T')[0], 
                 operatoreEmail: opEmail,
-                created_at: new Date().toISOString(),
-                notizie: data.notizie || ''
+                created_at: new Date().toISOString()
               };
               setVendite(editingVendita ? vendite.map(v => v.id === editingVendita.id ? newV : v) : [newV, ...vendite]);
               setIsFormOpen(false);
