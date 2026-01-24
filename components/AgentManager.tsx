@@ -1,16 +1,17 @@
 
 import React, { useState, useRef } from 'react';
 import { Agente, Operatore } from '../types';
-import { UserCheck, Mail, ShieldAlert, UserCog, X, Save, FileUp, Phone, MapPin, UploadCloud, Info } from 'lucide-react';
+import { UserCheck, Mail, ShieldAlert, UserCog, X, Save, FileUp, Phone, MapPin, UploadCloud, Info, Trash2 } from 'lucide-react';
 
 interface AgentManagerProps {
   agenti: Agente[];
   operatori: Operatore[];
   isAdmin: boolean;
   onUpdate: (agente: Agente) => void;
+  onReset?: () => void;
 }
 
-const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin, onUpdate }) => {
+const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin, onUpdate, onReset }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agente | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,34 +60,43 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
 
       const headers = lines[0].split(/[,;]/).map(h => h.trim().toLowerCase());
       
-      // Mappatura intelligente delle colonne di Google Workspace
-      const idxNome = headers.findIndex(h => h.includes('name') || h.includes('nome') || h.includes('given'));
+      // Mappatura avanzata intestazioni
+      const idxLastName = headers.findIndex(h => h.includes('last name') || h.includes('cognome') || h.includes('family'));
+      const idxFirstName = headers.findIndex(h => h.includes('first name') || h.includes('nome') || h.includes('given'));
       const idxEmail = headers.findIndex(h => h.includes('email') || h.includes('e-mail'));
-      const idxPhone = headers.findIndex(h => h.includes('phone') || h.includes('tel') || h.includes('mobile'));
+      const idxPhone = headers.findIndex(h => h.includes('phone') || h.includes('tel') || h.includes('mobile') || h.includes('cellulare'));
+      const idxRegione = headers.findIndex(h => h.includes('regione') || h.includes('region') || h.includes('zona') || h.includes('area'));
 
-      const newAgents: Agente[] = [];
+      let importedCount = 0;
       
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/^["'](.+)["']$/, '$1'));
         
-        const nome = idxNome !== -1 ? columns[idxNome] : '';
+        const lastName = idxLastName !== -1 ? columns[idxLastName] : '';
+        const firstName = idxFirstName !== -1 ? columns[idxFirstName] : '';
+        
+        // Uniamo: COGNOME NOME
+        const nomeCompleto = `${lastName} ${firstName}`.trim();
+        
         const email = idxEmail !== -1 ? columns[idxEmail] : '';
         const telefono = idxPhone !== -1 ? columns[idxPhone] : '';
+        const zona = idxRegione !== -1 ? columns[idxRegione] : '';
 
-        if (nome) {
+        if (nomeCompleto) {
           const agent: Agente = {
             id: Math.random().toString(36).substr(2, 9),
-            nome,
-            email: email || `${nome.toLowerCase().replace(/\s/g, '.')}@azienda.it`,
+            nome: nomeCompleto,
+            email: email || `${nomeCompleto.toLowerCase().replace(/\s+/g, '.')}@azienda.it`,
             telefono,
-            zona: '',
+            zona,
             operatoreEmail: operatori[0]?.email || ''
           };
           onUpdate(agent);
+          importedCount++;
         }
       }
-      alert(`Importazione completata!`);
+      alert(`Importazione completata: ${importedCount} agenti aggiunti.`);
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -108,9 +118,9 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h3 className="text-xl font-bold text-slate-900">Anagrafica Team Agenti</h3>
-            <p className="text-slate-500 text-sm mt-1">Gestione e importazione rapida dei collaboratori.</p>
+            <p className="text-slate-500 text-sm mt-1">Gestione, importazione CSV e mappatura zone.</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <input 
               type="file" 
               accept=".csv" 
@@ -118,11 +128,20 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
               className="hidden" 
               onChange={handleCsvImport} 
             />
+            {isAdmin && onReset && (
+              <button 
+                onClick={onReset}
+                className="bg-rose-50 text-rose-600 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-rose-100 transition-all border border-rose-200 active:scale-95"
+                title="Svuota completamente la lista agenti"
+              >
+                <Trash2 className="w-4 h-4" /> Reset Team
+              </button>
+            )}
             <button 
               onClick={() => fileInputRef.current?.click()}
               className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-200 transition-all border border-slate-200 active:scale-95"
             >
-              <FileUp className="w-4 h-4" /> Importa CSV Google
+              <FileUp className="w-4 h-4" /> Importa CSV
             </button>
             {isAdmin && (
               <button 
@@ -140,7 +159,7 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
             <div className="col-span-full py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
               <UploadCloud className="w-12 h-12 text-slate-300 mx-auto mb-4" />
               <p className="text-slate-400 font-medium italic text-lg">Nessun agente presente.</p>
-              <p className="text-slate-400 text-sm mt-2">Usa il tasto Importa CSV per caricare i contatti da Google Workspace.</p>
+              <p className="text-slate-400 text-sm mt-2">Usa il tasto Importa CSV per caricare i contatti. L'app cercherà le colonne Cognome, Nome e Regione.</p>
             </div>
           ) : (
             agenti.map((agente) => (
@@ -150,11 +169,11 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
                     {agente.nome.charAt(0)}
                   </div>
                   <div className="overflow-hidden">
-                    <h4 className="font-bold text-slate-900 text-lg truncate">{agente.nome}</h4>
-                    <div className="flex items-center gap-1.5">
+                    <h4 className="font-bold text-slate-900 text-lg truncate uppercase">{agente.nome}</h4>
+                    <div className="flex items-center gap-1.5 mt-0.5">
                        {agente.zona && (
-                         <span className="text-[9px] text-amber-600 font-black uppercase tracking-widest bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
-                           Zona: {agente.zona}
+                         <span className="text-[9px] text-amber-600 font-black uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded border border-amber-100 flex items-center gap-1">
+                           <MapPin className="w-2 h-2" /> {agente.zona}
                          </span>
                        )}
                        {!agente.zona && <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Agente Senior</span>}
@@ -212,13 +231,13 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
             
             <form onSubmit={handleSubmit} className="p-8 space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 tracking-widest">Nome Completo</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 tracking-widest">Cognome e Nome</label>
                 <input 
                   required
-                  placeholder="Es: Luigi Verdi"
-                  className="w-full border-2 border-slate-100 rounded-xl px-4 py-3 focus:border-[#32964D] outline-none font-bold"
+                  placeholder="Es: ROSSI LUIGI"
+                  className="w-full border-2 border-slate-100 rounded-xl px-4 py-3 focus:border-[#32964D] outline-none font-bold uppercase"
                   value={formData.nome}
-                  onChange={e => setFormData({...formData, nome: e.target.value})}
+                  onChange={e => setFormData({...formData, nome: e.target.value.toUpperCase()})}
                 />
               </div>
 
@@ -247,11 +266,11 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 tracking-widest">Zona di Competenza</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 tracking-widest">Regione / Zona</label>
                 <div className="relative">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input 
-                    placeholder="Es: Milano Centro, Puglia, Estero..."
+                    placeholder="Es: Puglia, Lombardia..."
                     className="w-full border-2 border-slate-100 rounded-xl pl-11 pr-4 py-3 focus:border-amber-500 outline-none font-bold"
                     value={formData.zona}
                     onChange={e => setFormData({...formData, zona: e.target.value})}

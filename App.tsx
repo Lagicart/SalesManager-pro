@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud } from 'lucide-react';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud, Clock } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<'connected' | 'error' | 'none'>('none');
+  const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const lastFetchRef = useRef<number>(0);
 
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('sm_is_logged_in') === 'true');
@@ -92,7 +93,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     
     const now = Date.now();
-    if (!force && now - lastFetchRef.current < 4000) return; 
+    if (!force && now - lastFetchRef.current < 2000) return; 
     lastFetchRef.current = now;
 
     setIsSyncing(true);
@@ -137,6 +138,7 @@ const App: React.FC = () => {
           return ensureAdmin(result);
         });
       }
+      setLastSyncTime(new Date().toLocaleTimeString('it-IT'));
     } catch (e) {
       console.error("Errore fetch Cloud:", e);
     } finally {
@@ -145,14 +147,14 @@ const App: React.FC = () => {
   }, [supabase, ensureAdmin]);
 
   useEffect(() => {
-    if (supabase) {
+    if (supabase && isLoggedIn) {
       fetchData(true);
       const vSub = supabase.channel('v-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData()).subscribe();
       const oSub = supabase.channel('o-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData()).subscribe();
       const aSub = supabase.channel('a-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData()).subscribe();
       return () => { supabase.removeChannel(vSub); supabase.removeChannel(oSub); supabase.removeChannel(aSub); };
     }
-  }, [supabase, fetchData]);
+  }, [supabase, fetchData, isLoggedIn]);
 
   useEffect(() => { localStorage.setItem('sm_vendite', JSON.stringify(vendite)); }, [vendite]);
   useEffect(() => { localStorage.setItem('sm_agenti', JSON.stringify(agenti)); }, [agenti]);
@@ -173,12 +175,16 @@ const App: React.FC = () => {
   const handleLogin = (user: Operatore) => {
     setCurrentUser(user);
     setIsLoggedIn(true);
+    // Fetch immediato appena si entra
+    setTimeout(() => fetchData(true), 500);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setIsLoggedIn(false);
     setView('dashboard');
+    localStorage.removeItem('sm_current_user');
+    localStorage.setItem('sm_is_logged_in', 'false');
   };
 
   const syncToCloud = async (table: string, data: any) => {
@@ -199,6 +205,7 @@ const App: React.FC = () => {
       }
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
+      fetchData(true);
     } catch (e) {
       console.error(`Errore sync ${table}:`, e);
     }
@@ -211,7 +218,7 @@ const App: React.FC = () => {
       for (const op of operatori) await syncToCloud('operatori', op);
       for (const ag of agenti) await syncToCloud('agenti', ag);
       for (const ve of vendite) await syncToCloud('vendite', ve);
-      alert("Dati sincronizzati con successo!");
+      alert("Dati locali sincronizzati con il server!");
       fetchData(true);
     } catch (e) {
       alert("Errore durante la sincronizzazione.");
@@ -224,6 +231,26 @@ const App: React.FC = () => {
     if (!supabase) return;
     for (const op of operatori) await syncToCloud('operatori', op);
     await fetchData(true);
+  };
+
+  const handleDeleteAllAgents = async () => {
+    if (!window.confirm("Attenzione: questa azione eliminerà TUTTI gli agenti sia in locale che sul Cloud. Procedere?")) return;
+    
+    setIsSyncing(true);
+    try {
+      setAgenti([]);
+      if (supabase) {
+        const { error } = await supabase.from('agenti').delete().neq('id', 'dummy'); // Elimina tutto
+        if (error) throw error;
+      }
+      alert("Anagrafica agenti azzerata.");
+    } catch (e) {
+      console.error("Errore reset agenti:", e);
+      alert("Errore durante l'eliminazione massiva.");
+    } finally {
+      setIsSyncing(false);
+      fetchData(true);
+    }
   };
 
   const filteredVendite = useMemo(() => {
@@ -252,25 +279,25 @@ const App: React.FC = () => {
           </div>
           
           <nav className="space-y-1.5">
-            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white' : 'text-slate-400 hover:text-white'}`}>
+            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
               <TrendingUp className="w-5 h-5" />
               <span className="font-medium">Dashboard</span>
             </button>
-            <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white' : 'text-slate-400 hover:text-white'}`}>
+            <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
               <List className="w-5 h-5" />
               <span className="font-medium">Vendite</span>
             </button>
-            <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white' : 'text-slate-400 hover:text-white'}`}>
+            <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
               <Contact2 className="w-5 h-5" />
               <span className="font-medium">Anagrafica Agenti</span>
             </button>
             {currentUser.role === 'admin' && (
               <>
-                <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white' : 'text-slate-400 hover:text-white'}`}>
+                <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
                   <Users className="w-5 h-5" />
                   <span className="font-medium">Operatori</span>
                 </button>
-                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white' : 'text-slate-400 hover:text-white'}`}>
+                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg shadow-[#32964D]/20' : 'text-slate-400 hover:text-white'}`}>
                   <Settings className="w-5 h-5" />
                   <span className="font-medium">Impostazioni</span>
                 </button>
@@ -283,17 +310,24 @@ const App: React.FC = () => {
           <UserSwitcher currentUser={currentUser} onLogout={handleLogout} />
           <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2">
              {cloudStatus === 'connected' ? (
-               <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
-                 <Cloud className="w-3 h-3" /> Cloud Sincronizzato
+               <div className="flex flex-col gap-1">
+                 <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
+                   <Cloud className="w-3 h-3" /> Cloud Attivo
+                 </div>
+                 {lastSyncTime && (
+                   <div className="flex items-center gap-1.5 text-slate-500 text-[9px] font-medium">
+                     <Clock className="w-2.5 h-2.5" /> Ultima sync: {lastSyncTime}
+                   </div>
+                 )}
                </div>
              ) : (
                <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
-                 <CloudOff className="w-3 h-3" /> Solo Locale (Backup ON)
+                 <CloudOff className="w-3 h-3" /> Solo Locale (Offline)
                </div>
              )}
              {isSyncing && (
-               <div className="flex items-center gap-2 text-emerald-400 text-[9px] animate-pulse">
-                 <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Aggiornamento...
+               <div className="flex items-center gap-2 text-[#32964D] text-[9px] font-bold animate-pulse">
+                 <RefreshCw className="w-2.5 h-2.5 animate-spin" /> In Sincronia...
                </div>
              )}
           </div>
@@ -302,21 +336,30 @@ const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
-          <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-bold text-slate-800 uppercase tracking-tighter">
-              {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Personalizzazione' : 'Operatori'}
+          <div className="flex items-center gap-6">
+            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
+              {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : 'Operatori'}
             </h2>
+            {cloudStatus === 'connected' && (
+              <button 
+                onClick={() => fetchData(true)}
+                className="text-slate-400 hover:text-[#32964D] transition-colors p-2 rounded-lg hover:bg-emerald-50"
+                title="Aggiorna dati dal Cloud"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-3">
              {view === 'list' && (
-              <button onClick={() => { setEditingVendita(null); setIsFormOpen(true); }} className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-lg transition-all active:scale-95">
+              <button onClick={() => { setEditingVendita(null); setIsFormOpen(true); }} className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-lg transition-all active:scale-95 hover:bg-[#2b7e41]">
                 <Plus className="w-5 h-5" /> Nuova Vendita
               </button>
             )}
           </div>
         </header>
 
-        <section className="flex-1 overflow-auto p-8">
+        <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
           <div className="max-w-7xl mx-auto">
             {view === 'list' && (
               <SalesTable 
@@ -331,7 +374,7 @@ const App: React.FC = () => {
                 }} 
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
                 onDelete={async (id) => {
-                  if (window.confirm("Eliminare?")) {
+                  if (window.confirm("Sei sicuro di voler eliminare questa vendita?")) {
                     setVendite(vendite.filter(v => v.id !== id));
                     if (supabase) await supabase.from('vendite').delete().eq('id', id);
                   }
@@ -339,11 +382,17 @@ const App: React.FC = () => {
               />
             )}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
-            {view === 'agents' && <AgentManager agenti={filteredAgenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} onUpdate={async (a) => {
-              const updated = agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti];
-              setAgenti(updated);
-              await syncToCloud('agenti', a);
-            }} />}
+            {view === 'agents' && <AgentManager 
+              agenti={filteredAgenti} 
+              operatori={operatori} 
+              isAdmin={currentUser.role === 'admin'} 
+              onUpdate={async (a) => {
+                const updated = agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti];
+                setAgenti(updated);
+                await syncToCloud('agenti', a);
+              }} 
+              onReset={handleDeleteAllAgents}
+            />}
             {view === 'operators' && <OperatorManager 
               operatori={operatori} 
               onUpdate={async (o) => {
@@ -366,18 +415,18 @@ const App: React.FC = () => {
             {view === 'settings' && (
               <div className="space-y-8">
                 {currentUser.role === 'admin' && cloudStatus === 'connected' && (
-                  <div className="bg-emerald-900 p-6 rounded-3xl text-white shadow-xl flex items-center justify-between">
+                  <div className="bg-emerald-900 p-6 rounded-3xl text-white shadow-xl flex items-center justify-between border border-emerald-500/20">
                     <div>
                       <h4 className="font-bold flex items-center gap-2 text-emerald-400">
-                        <UploadCloud className="w-5 h-5" /> Sincronizzazione Forzata Cloud
+                        <UploadCloud className="w-5 h-5" /> Sincronizzazione Master
                       </h4>
-                      <p className="text-xs text-emerald-100/70 mt-1">Carica tutti i dati locali sul server se noti incongruenze.</p>
+                      <p className="text-xs text-emerald-100/70 mt-1">Sincronizza manualmente tutti i dati di questo PC con il database online.</p>
                     </div>
                     <button 
                       onClick={forcePushAllToCloud}
                       className="bg-white/10 hover:bg-white/20 px-6 py-2.5 rounded-xl font-bold text-sm border border-white/10 transition-all active:scale-95"
                     >
-                      Sincronizza Ora
+                      Allinea Cloud Now
                     </button>
                   </div>
                 )}
