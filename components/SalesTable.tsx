@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { Clock, X, Printer, Camera, MessageSquare, Send, CheckCircle2, UserCheck, Smartphone, ShieldAlert, Check, Pencil, Trash2, RotateCcw, AlertTriangle, ThumbsUp } from 'lucide-react';
+import { Clock, X, Printer, Camera, MessageSquare, Send, CheckCircle2, UserCheck, Smartphone, ShieldAlert, Check, Pencil, Trash2, RotateCcw, AlertTriangle, ThumbsUp, Percent } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -236,6 +236,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Chat</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Verifica</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Stato / GG</th>
+                <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Sconto</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Importo</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right no-print">Azioni</th>
               </tr>
@@ -304,6 +305,15 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                           <span className={`text-[9px] font-black uppercase tracking-tighter ${days > 15 ? 'text-rose-600' : 'text-slate-400'}`}>Da {days} giorni</span>
                         </div>
                       )}
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                      {v.sconto ? (
+                        <div className="flex justify-center">
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 rounded-xl text-[10px] font-black uppercase tracking-tight border border-amber-200">
+                             <Percent className="w-3 h-3" /> {v.sconto}
+                          </span>
+                        </div>
+                      ) : <span className="text-[10px] font-black text-slate-200 uppercase">-</span>}
                     </td>
                     <td className="px-6 py-5">
                       <div className={`text-base font-black ${v.incassato ? 'text-emerald-700' : 'text-slate-900'}`}>€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</div>
