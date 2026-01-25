@@ -214,11 +214,25 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); }
   };
 
-  // AGENTI: Tutti gli operatori possono vedere tutti gli agenti (richiesta utente)
-  const filteredAgenti = useMemo(() => {
+  // ANAGRAFICA: Tutti vedono tutti (richiesta utente)
+  const fullAgentList = useMemo(() => {
     if (!currentUser) return [];
     return agenti;
   }, [agenti, currentUser]);
+
+  // FILTRO PER IL MODULO VENDITE (RICHIESTA UTENTE)
+  const formAvailableAgents = useMemo(() => {
+    if (!currentUser) return [];
+    
+    // Se è Admin e non sta simulando nessuno, vede tutti gli agenti per caricare vendite per chiunque
+    if (currentUser.role === 'admin' && !viewAsEmail) {
+      return agenti;
+    }
+
+    // Altrimenti, vede solo gli agenti assegnati a lui (o all'utente simulato)
+    const activeEmail = (viewAsEmail || currentUser.email).toLowerCase();
+    return agenti.filter(a => a.operatoreEmail.toLowerCase() === activeEmail);
+  }, [agenti, currentUser, viewAsEmail]);
 
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
@@ -305,6 +319,12 @@ const App: React.FC = () => {
                    addToast(`Pagamento verificato - Via libera merce`, 'success');
                 }}
                 onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
+                onDelete={async (id) => {
+                  if (window.confirm("Eliminare questa vendita?")) {
+                    setVendite(vendite.filter(v => v.id !== id));
+                    if (supabase) await supabase.from('vendite').delete().eq('id', id);
+                  }
+                }}
                 onUpdateNotizie={async (id, notizia, nuoveNotizie, mittente) => {
                    const target = vendite.find(v => v.id === id);
                    if (!target) return;
@@ -313,18 +333,12 @@ const App: React.FC = () => {
                    await syncToCloud('vendite', updated);
                 }}
                 currentUserNome={currentUser.nome}
-                onDelete={async (id) => {
-                  if (window.confirm("Eliminare questa vendita?")) {
-                    setVendite(vendite.filter(v => v.id !== id));
-                    if (supabase) await supabase.from('vendite').delete().eq('id', id);
-                  }
-                }}
               />
             )}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
             {view === 'agents' && (
               <AgentManager 
-                agenti={filteredAgenti} 
+                agenti={fullAgentList} 
                 operatori={operatori} 
                 isAdmin={currentUser.role === 'admin'} 
                 currentUser={currentUser} 
@@ -371,7 +385,7 @@ const App: React.FC = () => {
               addToast(editingVendita ? "Aggiornato" : "Registrato", "success");
             }} 
             userEmail={viewAsEmail || currentUser.email} 
-            availableAgentList={filteredAgenti} 
+            availableAgentList={formAvailableAgents} 
             metodiDisponibili={metodiPagamento}
             initialData={editingVendita || undefined} 
             isAdmin={currentUser.role === 'admin'}

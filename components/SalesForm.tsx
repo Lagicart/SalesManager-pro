@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Vendita, Agente } from '../types';
-import { X, Send, UserCheck, Plus, Euro, Percent, CreditCard, ShieldAlert } from 'lucide-react';
+import { X, Send, UserCheck, Plus, Euro, Percent, CreditCard, ShieldAlert, AlertTriangle } from 'lucide-react';
 
 interface SalesFormProps {
   onClose: () => void;
@@ -35,8 +35,13 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
         incassato: initialData.incassato,
         verificarePagamento: initialData.verificarePagamento || false
       });
-    } else if (availableAgentList.length === 1) {
-      setFormData(f => ({ ...f, agente: availableAgentList[0].nome }));
+    } else {
+      // Auto-selezione se c'è un solo agente disponibile
+      if (availableAgentList.length === 1) {
+        setFormData(f => ({ ...f, agente: availableAgentList[0].nome }));
+      } else {
+        setFormData(f => ({ ...f, agente: '' }));
+      }
     }
   }, [initialData, availableAgentList]);
 
@@ -45,6 +50,8 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
     if (!formData.cliente || formData.importo <= 0 || !formData.agente || !formData.metodoPagamento) return;
     onSubmit(formData);
   };
+
+  const hasNoAgents = availableAgentList.length === 0;
 
   return (
     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
@@ -72,21 +79,29 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
           </div>
         </div>
 
-        <div className="space-y-1.5 p-4 bg-emerald-50 rounded-[1.5rem] border border-emerald-100 shadow-inner">
-          <label className="flex items-center gap-2 text-[10px] font-black text-[#32964D] uppercase tracking-widest mb-2">
-            <UserCheck className="w-4 h-4" /> Agente Incaricato
+        <div className={`space-y-1.5 p-4 rounded-[1.5rem] border shadow-inner transition-colors ${hasNoAgents ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'}`}>
+          <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest mb-2 ${hasNoAgents ? 'text-rose-600' : 'text-[#32964D]'}`}>
+            {hasNoAgents ? <AlertTriangle className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />} 
+            Agente Incaricato
           </label>
-          <select
-            required
-            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:ring-4 focus:ring-emerald-500/10"
-            value={formData.agente}
-            onChange={e => setFormData(f => ({...f, agente: e.target.value}))}
-          >
-            <option value="" disabled>Seleziona Agente...</option>
-            {availableAgentList.map(agent => (
-              <option key={agent.id} value={agent.nome}>{agent.nome}</option>
-            ))}
-          </select>
+          
+          {hasNoAgents ? (
+            <div className="p-3 bg-white rounded-xl border border-rose-100 text-[10px] font-bold text-rose-500 leading-tight">
+              ATTENZIONE: Non risultano agenti assegnati al tuo profilo. Vai in "Anagrafica Agenti" per associarti come referente operativo.
+            </div>
+          ) : (
+            <select
+              required
+              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-black uppercase outline-none focus:ring-4 focus:ring-emerald-500/10"
+              value={formData.agente}
+              onChange={e => setFormData(f => ({...f, agente: e.target.value}))}
+            >
+              <option value="" disabled>Seleziona Agente...</option>
+              {availableAgentList.map(agent => (
+                <option key={agent.id} value={agent.nome}>{agent.nome}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -138,7 +153,11 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
           </div>
         )}
 
-        <button type="submit" className={`w-full text-white font-black py-5 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95 uppercase tracking-[0.2em] text-xs ${initialData ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#32964D] hover:bg-[#2b7e41]'}`}>
+        <button 
+          type="submit" 
+          disabled={hasNoAgents}
+          className={`w-full text-white font-black py-5 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95 uppercase tracking-[0.2em] text-xs ${hasNoAgents ? 'bg-slate-300 cursor-not-allowed' : (initialData ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#32964D] hover:bg-[#2b7e41]')}`}
+        >
           {initialData ? <Send className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
           {initialData ? 'Salva Modifiche' : 'Registra Pratica'}
         </button>
