@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { Vendita } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { DollarSign, PieChart, TrendingUp, AlertTriangle, Clock, Calendar, Users, Trophy } from 'lucide-react';
+import { DollarSign, TrendingUp, AlertTriangle, Clock, Zap } from 'lucide-react';
 
 interface DashboardProps {
   vendite: Vendita[];
@@ -10,21 +10,33 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
+  // Statistiche calcolate in tempo reale
   const stats = useMemo(() => {
     const total = vendite.reduce((acc, v) => acc + v.importo, 0);
     const incassato = vendite.filter(v => v.incassato).reduce((acc, v) => acc + v.importo, 0);
     const pendente = total - incassato;
     const count = vendite.length;
+
+    // Statistiche specifiche per lo sconto (Fast Pay)
+    const praticheScontatePendenti = vendite.filter(v => !v.incassato && v.sconto && v.sconto.trim() !== '');
+    const volumeScontatiPendenti = praticheScontatePendenti.reduce((acc, v) => acc + v.importo, 0);
     
-    return { total, incassato, pendente, count };
+    return { total, incassato, pendente, count, fastPayCount: praticheScontatePendenti.length, fastPayVolume: volumeScontatiPendenti };
   }, [vendite]);
 
+  // Ordinamento per priorità di incasso
   const pendentiOrdinati = useMemo(() => {
     return vendite
       .filter(v => !v.incassato)
-      .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+      .sort((a, b) => {
+        // Priorità alle pratiche scontate (Fast Pay)
+        if (a.sconto && !b.sconto) return -1;
+        if (!a.sconto && b.sconto) return 1;
+        return new Date(a.data).getTime() - new Date(b.data).getTime();
+      });
   }, [vendite]);
 
+  // Dati per il grafico dei metodi di pagamento
   const methodChartData = useMemo(() => {
     const groups: Record<string, number> = {};
     vendite.forEach(v => {
@@ -33,71 +45,56 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
     return Object.entries(groups).map(([name, value]) => ({ name, value }));
   }, [vendite]);
 
-  const agentChartData = useMemo(() => {
-    const groups: Record<string, number> = {};
-    vendite.forEach(v => {
-      groups[v.agente] = (groups[v.agente] || 0) + v.importo;
-    });
-    return Object.entries(groups)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [vendite]);
-
-  const efficiencyData = useMemo(() => {
-    const agents: Record<string, { total: number, incassato: number }> = {};
-    vendite.forEach(v => {
-      if (!agents[v.agente]) agents[v.agente] = { total: 0, incassato: 0 };
-      agents[v.agente].total += v.importo;
-      if (v.incassato) agents[v.agente].incassato += v.importo;
-    });
-
-    return Object.entries(agents)
-      .map(([name, data]) => ({
-        name,
-        total: data.total,
-        incassato: data.incassato,
-        percentage: data.total > 0 ? (data.incassato / data.total) * 100 : 0
-      }))
-      .sort((a, b) => b.percentage - a.percentage);
-  }, [vendite]);
-
   const COLORS = ['#32964D', '#2d8444', '#28753c', '#1f5a2e', '#4ade80', '#166534'];
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
       
-      {/* SEZIONE ALERT SCADENZE */}
+      {/* SEZIONE ALERT PRIORITÀ (SCADENZE + FAST PAY) */}
       {isAdmin && pendentiOrdinati.length > 0 && (
         <div className="bg-white p-8 rounded-3xl shadow-lg shadow-rose-500/5 border border-slate-200">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="bg-rose-500 p-2.5 rounded-xl text-white shadow-lg shadow-rose-500/20">
-                <Clock className="w-5 h-5" />
+              <div className="bg-amber-500 p-2.5 rounded-xl text-white shadow-lg shadow-amber-500/20">
+                <Zap className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Crediti Prioritari in Sospeso</h3>
-                <p className="text-slate-500 text-xs mt-0.5">Le pratiche più datate che richiedono incasso immediato.</p>
+                <h3 className="text-xl font-bold text-slate-900">Priorità di Incasso (Sconti Attivi)</h3>
+                <p className="text-slate-500 text-xs mt-0.5">Pratiche con sconto applicato: il cliente ha scelto il pagamento veloce.</p>
               </div>
             </div>
+            {stats.fastPayCount > 0 && (
+              <span className="bg-amber-100 text-amber-700 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200">
+                {stats.fastPayCount} Pratiche Fast-Pay
+              </span>
+            )}
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/50">
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Dal</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cliente</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Importo</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agente</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sconto</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {pendentiOrdinati.slice(0, 5).map((v) => (
-                  <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={v.id} className={`hover:bg-slate-50 transition-colors ${v.sconto ? 'bg-amber-50/30' : ''}`}>
+                    <td className="px-4 py-4">
+                      {v.sconto ? <Zap className="w-4 h-4 text-amber-500" /> : <Clock className="w-4 h-4 text-slate-300" />}
+                    </td>
                     <td className="px-4 py-4 text-sm font-bold text-slate-600">{new Date(v.data).toLocaleDateString('it-IT')}</td>
-                    <td className="px-4 py-4 text-sm font-bold text-slate-900">{v.cliente}</td>
+                    <td className="px-4 py-4 text-sm font-bold text-slate-900 uppercase">{v.cliente}</td>
                     <td className="px-4 py-4 text-sm font-black text-rose-600">€ {v.importo.toLocaleString('it-IT')}</td>
-                    <td className="px-4 py-4 text-xs font-medium text-slate-500 italic">{v.agente}</td>
+                    <td className="px-4 py-4">
+                       {v.sconto ? (
+                         <span className="text-[10px] font-black text-amber-600 uppercase bg-amber-100 px-2 py-1 rounded-lg border border-amber-200">{v.sconto}</span>
+                       ) : <span className="text-slate-300">-</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -126,21 +123,21 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
             </div>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 bg-gradient-to-br from-white to-amber-50/50">
           <div className="flex items-center gap-4">
-            <div className="bg-rose-50 p-3 rounded-2xl text-rose-600"><AlertTriangle className="w-6 h-6" /></div>
+            <div className="bg-amber-500 p-3 rounded-2xl text-white shadow-lg shadow-amber-500/20"><Zap className="w-6 h-6" /></div>
             <div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Da Incassare</p>
-              <h4 className="text-2xl font-black text-rose-600">€ {stats.pendente.toLocaleString()}</h4>
+              <p className="text-[10px] text-amber-600 font-bold uppercase tracking-widest">Fast-Pay Pendenti</p>
+              <h4 className="text-2xl font-black text-amber-700">€ {stats.fastPayVolume.toLocaleString()}</h4>
             </div>
           </div>
         </div>
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-4">
-            <div className="bg-slate-50 p-3 rounded-2xl text-slate-600"><PieChart className="w-6 h-6" /></div>
+            <div className="bg-rose-50 p-3 rounded-2xl text-rose-600"><AlertTriangle className="w-6 h-6" /></div>
             <div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Pratiche</p>
-              <h4 className="text-2xl font-black text-slate-900">{stats.count}</h4>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Totale Da Incassare</p>
+              <h4 className="text-2xl font-black text-rose-600">€ {stats.pendente.toLocaleString()}</h4>
             </div>
           </div>
         </div>
@@ -148,43 +145,6 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
 
       {/* GRAFICI DETTAGLIATI */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* RANKING EFFICIENZA INCASSO */}
-        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-amber-500" />
-              <h3 className="text-lg font-bold text-slate-800">Efficienza Incasso Agenti</h3>
-            </div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">% su venduto</span>
-          </div>
-          <div className="space-y-6">
-            {efficiencyData.slice(0, 5).map((agent, index) => (
-              <div key={agent.name} className="space-y-2">
-                <div className="flex justify-between items-center px-1">
-                  <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                    <span className="w-5 h-5 bg-slate-100 rounded text-[10px] flex items-center justify-center text-slate-500">{index + 1}</span>
-                    {agent.name}
-                  </span>
-                  <span className={`text-xs font-black ${agent.percentage > 70 ? 'text-[#32964D]' : 'text-slate-500'}`}>
-                    {agent.percentage.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200">
-                  <div 
-                    className={`h-full rounded-full transition-all duration-1000 ${index === 0 ? 'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.3)]' : 'bg-[#32964D]'}`}
-                    style={{ width: `${agent.percentage}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[9px] font-medium text-slate-400 px-1 uppercase tracking-tight">
-                  <span>Inc: € {agent.incassato.toLocaleString()}</span>
-                  <span>Tot: € {agent.total.toLocaleString()}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* VOLUME PER METODO */}
         <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-2 mb-8">
@@ -208,34 +168,25 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
           </div>
         </div>
 
-        {/* LIQUIDITÀ */}
-        <div className="lg:col-span-2 bg-emerald-900 p-8 rounded-3xl shadow-xl text-white">
+        {/* ANALISI LIQUIDITÀ */}
+        <div className="bg-emerald-900 p-8 rounded-3xl shadow-xl text-white flex flex-col justify-center">
           <div className="max-w-md mx-auto text-center space-y-6">
-            <h3 className="text-xl font-bold uppercase tracking-widest text-emerald-400">Analisi Liquidità Aziendale</h3>
+            <h3 className="text-xl font-bold uppercase tracking-widest text-emerald-400">Efficienza Incasso Totale</h3>
             <p className="text-emerald-100/70 text-sm leading-relaxed">
-              Attualmente hai incassato il <b>{((stats.incassato / stats.total) * 100 || 0).toFixed(1)}%</b> del fatturato registrato nel periodo selezionato.
+              Hai incassato il <b>{((stats.incassato / stats.total) * 100 || 0).toFixed(1)}%</b> del fatturato totale.
             </p>
-            <div className="relative pt-2">
-              <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest mb-3 text-emerald-400">
-                <span>Efficienza Incasso Totale</span>
-                <span>{((stats.incassato / stats.total) * 100 || 0).toFixed(1)}%</span>
-              </div>
-              <div className="w-full bg-white/10 h-6 rounded-full overflow-hidden border border-white/5 p-1">
-                <div 
-                  className="bg-gradient-to-r from-emerald-500 to-emerald-300 h-full rounded-full transition-all duration-1000 shadow-lg" 
-                  style={{ width: `${(stats.incassato / stats.total) * 100 || 0}%` }} 
-                />
-              </div>
+            <div className="w-full bg-emerald-950/50 h-4 rounded-full overflow-hidden border border-emerald-800/50">
+              <div 
+                className="bg-emerald-400 h-full transition-all duration-1000 shadow-[0_0_20px_rgba(52,211,153,0.4)]" 
+                style={{ width: `${(stats.incassato / stats.total) * 100 || 0}%` }} 
+              />
+            </div>
+            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-400/60">
+               <span>Inizio</span>
+               <span>Obiettivo 100%</span>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* FOOTER CREDITS */}
-      <div className="pt-8 text-center border-t border-slate-200">
-        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">
-          Credits: Luca Aimone®2026
-        </p>
       </div>
     </div>
   );

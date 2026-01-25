@@ -214,13 +214,11 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); }
   };
 
-  // AGENTI FILTRATI PER PRIVACY
+  // AGENTI: Tutti gli operatori possono vedere tutti gli agenti (richiesta utente)
   const filteredAgenti = useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.role === 'admin' && !viewAsEmail) return agenti;
-    const targetEmail = (viewAsEmail || currentUser.email).toLowerCase();
-    return agenti.filter(a => a.operatoreEmail.toLowerCase() === targetEmail);
-  }, [agenti, currentUser, viewAsEmail]);
+    return agenti;
+  }, [agenti, currentUser]);
 
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
@@ -316,7 +314,7 @@ const App: React.FC = () => {
                 }}
                 currentUserNome={currentUser.nome}
                 onDelete={async (id) => {
-                  if (window.confirm("Eliminare?")) {
+                  if (window.confirm("Eliminare questa vendita?")) {
                     setVendite(vendite.filter(v => v.id !== id));
                     if (supabase) await supabase.from('vendite').delete().eq('id', id);
                   }
@@ -334,6 +332,13 @@ const App: React.FC = () => {
                   setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]);
                   await syncToCloud('agenti', a);
                 }} 
+                onDelete={async (id) => {
+                  if (window.confirm("Attenzione: Cancellare l'agente non eliminerà le vendite passate. Procedere con la rimozione dell'anagrafica?")) {
+                    setAgenti(agenti.filter(a => a.id !== id));
+                    if (supabase) await supabase.from('agenti').delete().eq('id', id);
+                    addToast("Agente rimosso dall'anagrafica", "info");
+                  }
+                }}
               />
             )}
             {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => {
