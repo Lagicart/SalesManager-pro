@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, Cloud, CloudOff, RefreshCw, AlertCircle, UploadCloud, Clock, BookOpen, CheckCircle2, XCircle, Bell, BellRing } from 'lucide-react';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, FileText, CheckCircle2, BellRing } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -11,6 +11,7 @@ import AgentManager from './components/AgentManager';
 import OperatorManager from './components/OperatorManager';
 import SettingsManager from './components/SettingsManager';
 import LoginScreen from './components/LoginScreen';
+import StatementOfAccount from './components/StatementOfAccount';
 
 const BRAND_LOGO_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2332964D'/%3E%3Cpath d='M30 70 L70 30 M45 30 L70 30 L70 55' stroke='white' stroke-width='12' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
 
@@ -28,27 +29,13 @@ const App: React.FC = () => {
 
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState<'connected' | 'error' | 'none'>('none');
-  const [lastSyncTime, setLastSyncTime] = useState<string>('');
-  const lastFetchRef = useRef<number>(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const lastFetchRef = useRef<number>(0);
 
   const addToast = (message: string, type: 'success' | 'error' | 'info' | 'notification' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
-    
-    if (type === 'notification' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification("Lagicart SalesManager", {
-          body: message,
-          icon: BRAND_LOGO_DATA,
-        });
-      } catch (e) { console.error(e); }
-    }
-
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 8000);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 8000);
   };
 
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('sm_is_logged_in') === 'true');
@@ -70,14 +57,7 @@ const App: React.FC = () => {
 
   const [operatori, setOperatori] = useState<Operatore[]>(() => {
     const saved = localStorage.getItem('sm_operatori');
-    const defaultOps: Operatore[] = [{ id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' }];
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as Operatore[];
-        return Array.isArray(parsed) ? ensureAdmin(parsed) : defaultOps;
-      } catch { return defaultOps; }
-    }
-    return defaultOps;
+    return saved ? ensureAdmin(JSON.parse(saved)) : [{ id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' }];
   });
 
   const [vendite, setVendite] = useState<Vendita[]>(() => {
@@ -97,15 +77,13 @@ const App: React.FC = () => {
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
-  const [view, setView] = useState<'dashboard' | 'list' | 'agents' | 'operators' | 'settings'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'list' | 'statement' | 'agents' | 'operators' | 'settings'>('dashboard');
 
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
       try {
-        const client = createClient(dbConfig.url, dbConfig.key);
-        setSupabase(client);
-        setCloudStatus('connected');
-      } catch (e) { setCloudStatus('error'); }
+        setSupabase(createClient(dbConfig.url, dbConfig.key));
+      } catch (e) { console.error(e); }
     }
   }, [dbConfig]);
 
@@ -124,29 +102,24 @@ const App: React.FC = () => {
       ]);
 
       if (vRes.data) {
-        const cloudData: Vendita[] = vRes.data.map(d => ({
+        setVendite(vRes.data.map(d => ({
           id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
           operatoreEmail: (d.operatore_email || '').toLowerCase(),
-          incassato: d.incassato, 
-          verificarePagamento: d.verificare_pagamento,
-          pagamentoVerificato: d.pagamento_verificato,
-          noteAmministrazione: d.note_amministrazione || '',
-          notizie: d.notizie || '',
-          nuove_notizie: d.nuove_notizie || false,
-          ultimo_mittente: d.ultimo_mittente || '',
-          created_at: d.created_at
-        }));
-        setVendite(cloudData);
+          incassato: d.incassato, verificarePagamento: d.verificare_pagamento,
+          pagamentoVerificato: d.pagamento_verificato, noteAmministrazione: d.note_amministrazione || '',
+          notizie: d.notizie || '', nuove_notizie: d.nuove_notizie || false,
+          ultimo_mittente: d.ultimo_mittente || '', created_at: d.created_at
+        })));
       }
       
       if (aRes.data) {
         setAgenti(aRes.data.map(d => ({ 
-          id: d.id, nome: d.nome, email: d.email, operatoreEmail: (d.operatore_email || '').toLowerCase(),
+          id: d.id, nome: d.nome, email: d.email, 
+          operatoreEmail: (d.operatore_email || '').toLowerCase(),
           telefono: d.telefono, zona: d.zona
         })));
       }
-
       if (oRes.data) setOperatori(ensureAdmin(oRes.data as Operatore[]));
     } catch (e) { console.error(e); } finally { setIsSyncing(false); }
   }, [supabase, ensureAdmin]);
@@ -154,8 +127,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (supabase && isLoggedIn && currentUser) {
       const userEmail = currentUser.email.toLowerCase();
-      const nSub = supabase.channel('realtime-notifiche').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifiche' }, (payload) => {
-        if (payload.new.to_email.toLowerCase() === userEmail) addToast(payload.new.message, 'notification');
+      const nSub = supabase.channel('realtime-notifiche').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifiche' }, (p) => {
+        if (p.new.to_email.toLowerCase() === userEmail) addToast(p.new.message, 'notification');
       }).subscribe();
       const vSub = supabase.channel('realtime-data').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData(true)).subscribe();
       return () => { supabase.removeChannel(nSub); supabase.removeChannel(vSub); };
@@ -167,7 +140,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('sm_operatori', JSON.stringify(operatori)); }, [operatori]);
   useEffect(() => { localStorage.setItem('sm_metodi', JSON.stringify(metodiPagamento)); }, [metodiPagamento]);
   useEffect(() => { localStorage.setItem('sm_db_config', JSON.stringify(dbConfig)); }, [dbConfig]);
-  
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('sm_current_user', JSON.stringify(currentUser));
@@ -178,25 +150,10 @@ const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  const handleLogin = (user: Operatore) => {
-    setCurrentUser(user);
-    setIsLoggedIn(true);
-    addToast(`Bentornato, ${user.nome}!`, 'success');
-    setTimeout(() => fetchData(true), 500);
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setIsLoggedIn(false);
-    setViewAsEmail(null);
-  };
-
   const syncToCloud = async (table: string, data: any) => {
     if (!supabase) return;
     try {
       const payload: any = { ...data };
-      
-      // Mapping per la tabella VENDITE
       if (table === 'vendite') {
         payload.metodo_pagamento = data.metodoPagamento;
         payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
@@ -204,49 +161,18 @@ const App: React.FC = () => {
         payload.ultimo_mittente = data.ultimo_mittente;
         payload.verificare_pagamento = data.verificarePagamento;
         payload.pagamento_verificato = data.pagamentoVerificato;
-        delete payload.metodoPagamento;
-        delete payload.operatoreEmail;
-        delete payload.noteAmministrazione;
-        delete payload.verificarePagamento;
-        delete payload.pagamentoVerificato;
+        delete payload.metodoPagamento; delete payload.operatoreEmail; delete payload.noteAmministrazione;
+        delete payload.verificarePagamento; delete payload.pagamentoVerificato;
       }
-      
-      // Mapping per la tabella AGENTI (Risolve il bug della "memoria" degli agenti)
       if (table === 'agenti') {
         payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
         delete payload.operatoreEmail;
       }
-
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
-      
-      // Dopo il salvataggio rinfreschiamo i dati
       fetchData(true);
-    } catch (e) { 
-      console.error("Errore Sync Cloud:", e);
-      addToast("Errore di sincronizzazione Cloud", "error");
-    }
+    } catch (e) { addToast("Errore di sincronizzazione Cloud", "error"); }
   };
-
-  // ANAGRAFICA: Tutti vedono tutti (richiesta utente)
-  const fullAgentList = useMemo(() => {
-    if (!currentUser) return [];
-    return agenti;
-  }, [agenti, currentUser]);
-
-  // FILTRO PER IL MODULO VENDITE (RICHIESTA UTENTE)
-  const formAvailableAgents = useMemo(() => {
-    if (!currentUser) return [];
-    
-    // Se è Admin e non sta simulando nessuno, vede tutti gli agenti per caricare vendite per chiunque
-    if (currentUser.role === 'admin' && !viewAsEmail) {
-      return agenti;
-    }
-
-    // Altrimenti, vede solo gli agenti assegnati a lui (o all'utente simulato)
-    const activeEmail = (viewAsEmail || currentUser.email).toLowerCase();
-    return agenti.filter(a => (a.operatoreEmail || '').toLowerCase() === activeEmail);
-  }, [agenti, currentUser, viewAsEmail]);
 
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
@@ -259,17 +185,15 @@ const App: React.FC = () => {
     return list;
   }, [vendite, currentUser, viewAsEmail]);
 
-  if (!isLoggedIn || !currentUser) {
-    return <LoginScreen operatori={operatori} onLogin={handleLogin} onConfigChange={setDbConfig} />;
-  }
+  if (!isLoggedIn || !currentUser) return <LoginScreen operatori={operatori} onLogin={(u) => { setCurrentUser(u); setIsLoggedIn(true); setTimeout(() => fetchData(true), 500); }} onConfigChange={setDbConfig} />;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
       <div className="fixed bottom-6 right-6 z-[200] space-y-3 pointer-events-none no-print">
-        {toasts.map(toast => (
-          <div key={toast.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border pointer-events-auto animate-in slide-in-from-right duration-300 ${toast.type === 'success' ? 'bg-emerald-900 text-white border-emerald-500/30' : toast.type === 'error' ? 'bg-rose-900 text-white border-rose-500/30' : toast.type === 'notification' ? 'bg-amber-600 text-white border-white/20' : 'bg-slate-900 text-white border-slate-700'}`}>
-            {toast.type === 'notification' ? <BellRing className="w-5 h-5 animate-bounce" /> : <CheckCircle2 className="w-5 h-5" />}
-            <span className="text-sm font-bold">{toast.message}</span>
+        {toasts.map(t => (
+          <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border pointer-events-auto animate-in slide-in-from-right duration-300 ${t.type === 'success' ? 'bg-emerald-900 text-white border-emerald-500/30' : t.type === 'error' ? 'bg-rose-900 text-white border-rose-500/30' : t.type === 'notification' ? 'bg-amber-600 text-white border-white/20' : 'bg-slate-900 text-white border-slate-700'}`}>
+            {t.type === 'notification' ? <BellRing className="w-5 h-5 animate-bounce" /> : <CheckCircle2 className="w-5 h-5" />}
+            <span className="text-sm font-bold">{t.message}</span>
           </div>
         ))}
       </div>
@@ -278,11 +202,12 @@ const App: React.FC = () => {
         <div className="p-6">
           <div className="flex items-center gap-4 mb-10">
             <img src={BRAND_LOGO_DATA} alt="Logo" className="w-11 h-11" />
-            <h1 className="text-xl font-bold tracking-tight">Lagicart SalesManager</h1>
+            <h1 className="text-xl font-bold tracking-tight">Lagicart</h1>
           </div>
           <nav className="space-y-1.5">
             <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><TrendingUp className="w-5 h-5" /><span className="font-medium">Dashboard</span></button>
             <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List className="w-5 h-5" /><span className="font-medium">Vendite</span></button>
+            <button onClick={() => setView('statement')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'statement' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><FileText className="w-5 h-5" /><span className="font-medium">Estratto Conto</span></button>
             <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Contact2 className="w-5 h-5" /><span className="font-medium">Anagrafica Agenti</span></button>
             {currentUser.role === 'admin' && (
               <>
@@ -293,119 +218,33 @@ const App: React.FC = () => {
           </nav>
         </div>
         <div className="mt-auto p-6 border-t border-white/10">
-          <UserSwitcher currentUser={currentUser} operatori={operatori} onLogout={handleLogout} viewAsEmail={viewAsEmail} onViewAsChange={setViewAsEmail} />
+          <UserSwitcher currentUser={currentUser} operatori={operatori} onLogout={() => { setCurrentUser(null); setIsLoggedIn(false); setViewAsEmail(null); }} viewAsEmail={viewAsEmail} onViewAsChange={setViewAsEmail} />
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-            {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'settings' ? 'Configurazione' : 'Operatori'}
+            {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'statement' ? 'Estratto Conto' : view === 'settings' ? 'Configurazione' : 'Operatori'}
           </h2>
           {view === 'list' && <button onClick={() => { setEditingVendita(null); setIsFormOpen(true); }} className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-lg hover:bg-[#2b7e41] transition-all"><Plus className="w-5 h-5" /> Nuova Vendita</button>}
         </header>
 
         <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
           <div className="max-w-7xl mx-auto">
-            {view === 'list' && (
-              <SalesTable 
-                vendite={filteredVendite} 
-                metodiDisponibili={metodiPagamento}
-                isAdmin={currentUser.role === 'admin'} 
-                onIncasso={async (id) => {
-                  const target = vendite.find(v => v.id === id);
-                  if (!target) return;
-                  const updated = {...target, incassato: true };
-                  setVendite(vendite.map(v => v.id === id ? updated : v));
-                  await syncToCloud('vendite', updated);
-                  addToast(`Incasso confermato`, 'success');
-                }} 
-                onVerifyPayment={async (id) => {
-                   if (currentUser.role !== 'admin') {
-                     addToast("Azione non consentita", "error");
-                     return;
-                   }
-                   const target = vendite.find(v => v.id === id);
-                   if (!target) return;
-                   const updated = { ...target, pagamentoVerificato: true };
-                   setVendite(vendite.map(v => v.id === id ? updated : v));
-                   await syncToCloud('vendite', updated);
-                   addToast(`Pagamento verificato - Via libera merce`, 'success');
-                }}
-                onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }}
-                onDelete={async (id) => {
-                  if (window.confirm("Eliminare questa vendita?")) {
-                    setVendite(vendite.filter(v => v.id !== id));
-                    if (supabase) await supabase.from('vendite').delete().eq('id', id);
-                  }
-                }}
-                onUpdateNotizie={async (id, notizia, nuoveNotizie, mittente) => {
-                   const target = vendite.find(v => v.id === id);
-                   if (!target) return;
-                   const updated = { ...target, notizie: notizia, nuove_notizie: nuoveNotizie, ultimo_mittente: mittente };
-                   setVendite(vendite.map(v => v.id === id ? updated : v));
-                   await syncToCloud('vendite', updated);
-                }}
-                currentUserNome={currentUser.nome}
-              />
-            )}
+            {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={async (id) => { const v = vendite.find(x => x.id === id); if (v) { const up = {...v, incassato: true}; setVendite(vendite.map(x => x.id === id ? up : x)); await syncToCloud('vendite', up); addToast("Incasso confermato"); } }} onVerifyPayment={async (id) => { if (currentUser.role !== 'admin') return; const v = vendite.find(x => x.id === id); if (v) { const up = {...v, pagamentoVerificato: true}; setVendite(vendite.map(x => x.id === id ? up : x)); await syncToCloud('vendite', up); addToast("Pagamento verificato"); } }} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={async (id) => { if (window.confirm("Eliminare?")) { setVendite(vendite.filter(v => v.id !== id)); if (supabase) await supabase.from('vendite').delete().eq('id', id); } }} onUpdateNotizie={async (id, n, nn, m) => { const v = vendite.find(x => x.id === id); if (v) { const up = {...v, notizie: n, nuove_notizie: nn, ultimo_mittente: m}; setVendite(vendite.map(x => x.id === id ? up : x)); await syncToCloud('vendite', up); } }} currentUserNome={currentUser.nome} />}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
-            {view === 'agents' && (
-              <AgentManager 
-                agenti={fullAgentList} 
-                operatori={operatori} 
-                isAdmin={currentUser.role === 'admin'} 
-                currentUser={currentUser} 
-                onUpdate={async (a) => {
-                  // Aggiornamento locale immediato
-                  setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]);
-                  // Aggiornamento cloud con mapping corretto
-                  await syncToCloud('agenti', a);
-                }} 
-                onDelete={async (id) => {
-                  if (window.confirm("Attenzione: Cancellare l'agente non eliminerà le vendite passate. Procedere con la rimozione dell'anagrafica?")) {
-                    setAgenti(agenti.filter(a => a.id !== id));
-                    if (supabase) await supabase.from('agenti').delete().eq('id', id);
-                    addToast("Agente rimosso dall'anagrafica", "info");
-                  }
-                }}
-              />
-            )}
-            {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => {
-              setOperatori(ensureAdmin(operatori.find(x => x.id === o.id) ? operatori.map(x => x.id === o.id ? o : x) : [...operatori, o]));
-              await syncToCloud('operatori', o);
-            }} onDelete={async (id) => {
-              setOperatori(ensureAdmin(operatori.filter(o => o.id !== id)));
-              if (supabase) await supabase.from('operatori').delete().eq('id', id);
-            }} />}
-            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} onTestNotif={() => addToast("Test Notifica!", "notification")} data={null} onImport={() => {}} />}
+            {view === 'statement' && <StatementOfAccount agenti={agenti} vendite={filteredVendite} />}
+            {view === 'agents' && <AgentManager agenti={agenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} currentUser={currentUser} onUpdate={async (a) => { setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]); await syncToCloud('agenti', a); }} onDelete={async (id) => { if (window.confirm("Eliminare?")) { setAgenti(agenti.filter(a => a.id !== id)); if (supabase) await supabase.from('agenti').delete().eq('id', id); } }} />}
+            {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => { setOperatori(ensureAdmin(operatori.find(x => x.id === o.id) ? operatori.map(x => x.id === o.id ? o : x) : [...operatori, o])); await syncToCloud('operatori', o); }} onDelete={async (id) => { setOperatori(ensureAdmin(operatori.filter(o => o.id !== id))); if (supabase) await supabase.from('operatori').delete().eq('id', id); }} />}
+            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} />}
           </div>
         </section>
       </main>
 
       {isFormOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 no-print">
-          <SalesForm 
-            onClose={() => setIsFormOpen(false)} 
-            onSubmit={async (data) => {
-              const opEmail = (viewAsEmail || currentUser.email).toLowerCase();
-              const newV = editingVendita ? { ...editingVendita, ...data } : {
-                ...data, id: Math.random().toString(36).substr(2, 9),
-                data: new Date().toISOString().split('T')[0], 
-                operatoreEmail: opEmail,
-                created_at: new Date().toISOString()
-              };
-              setVendite(editingVendita ? vendite.map(v => v.id === editingVendita.id ? newV : v) : [newV, ...vendite]);
-              setIsFormOpen(false);
-              await syncToCloud('vendite', newV);
-              addToast(editingVendita ? "Aggiornato" : "Registrato", "success");
-            }} 
-            userEmail={viewAsEmail || currentUser.email} 
-            availableAgentList={formAvailableAgents} 
-            metodiDisponibili={metodiPagamento}
-            initialData={editingVendita || undefined} 
-            isAdmin={currentUser.role === 'admin'}
-          />
+          <SalesForm onClose={() => setIsFormOpen(false)} onSubmit={async (d) => { const email = (viewAsEmail || currentUser.email).toLowerCase(); const newV = editingVendita ? { ...editingVendita, ...d } : { ...d, id: Math.random().toString(36).substr(2, 9), data: new Date().toISOString().split('T')[0], operatoreEmail: email, created_at: new Date().toISOString() }; setVendite(editingVendita ? vendite.map(v => v.id === editingVendita.id ? newV : v) : [newV, ...vendite]); setIsFormOpen(false); await syncToCloud('vendite', newV); addToast(editingVendita ? "Aggiornato" : "Registrato"); }} userEmail={viewAsEmail || currentUser.email} availableAgentList={agenti.filter(a => (a.operatoreEmail || '').toLowerCase() === (viewAsEmail || currentUser.email).toLowerCase() || currentUser.role === 'admin')} metodiDisponibili={metodiPagamento} initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'} />
         </div>
       )}
     </div>
