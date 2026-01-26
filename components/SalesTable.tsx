@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { Clock, X, Camera, MessageSquare, Send, CheckCircle2, Smartphone, ThumbsUp, Pencil, Trash2, RotateCcw, AlertTriangle, Check, Percent, Euro, CreditCard } from 'lucide-react';
+import { Clock, X, Camera, MessageSquare, Send, CheckCircle2, ThumbsUp, Pencil, Trash2, RotateCcw, AlertTriangle, Euro, CreditCard } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -75,7 +75,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="relative">
             <Euro className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input type="number" step="0.01" placeholder="Importo Esatto..." className="w-full pl-11 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black outline-none focus:border-[#32964D]" value={filters.importo} onChange={e => setFilters({...filters, importo: e.target.value})} />
+            <input type="number" step="0.01" placeholder="Importo..." className="w-full pl-11 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black outline-none focus:border-[#32964D]" value={filters.importo} onChange={e => setFilters({...filters, importo: e.target.value})} />
           </div>
           <input type="text" placeholder="Agente..." className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black uppercase tracking-tight outline-none focus:border-[#32964D]" value={filters.agente} onChange={e => setFilters({...filters, agente: e.target.value})} />
           <select className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-[#32964D]" value={filters.metodo} onChange={e => setFilters({...filters, metodo: e.target.value})}>
@@ -99,9 +99,10 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente / Agente</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Metodo</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Chat</th>
+                <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Verifica</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Stato</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Importo</th>
-                <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right no-print">Azioni</th>
+                {isAdmin && <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right no-print">Azioni Admin</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -117,31 +118,49 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                       <div className="text-[10px] font-black text-[#32964D] uppercase tracking-widest opacity-70">{v.agente}</div>
                     </td>
                     <td className="px-6 py-5 text-center">
-                       <span className="text-[10px] font-black text-slate-500 uppercase flex items-center justify-center gap-1.5">
-                          <CreditCard className="w-3.5 h-3.5 opacity-30" /> {v.metodoPagamento}
-                       </span>
+                       <span className="text-xs font-black text-slate-600 uppercase bg-slate-100 px-4 py-1.5 rounded-lg border border-slate-200 whitespace-nowrap">{v.metodoPagamento}</span>
                     </td>
                     <td className="px-6 py-5 text-center">
                       <button onClick={() => { setActiveChat(v); if (hasUnread && onUpdateNotizie) onUpdateNotizie(v.id, v.notizie || '', false, v.ultimo_mittente || ''); }} className={`p-3 rounded-2xl transition-all relative ${hasUnread ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : (v.notizie ? 'bg-slate-100 text-slate-600' : 'text-slate-200 hover:text-slate-400')}`}><MessageSquare className={`w-5 h-5 ${hasUnread ? 'animate-pulse' : ''}`} />{hasUnread && <span className="absolute -top-2 -right-2 w-5 h-5 bg-rose-500 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white">!</span>}</button>
                     </td>
                     <td className="px-6 py-5 text-center">
-                      {v.incassato ? (
-                        <span className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-200"><CheckCircle2 className="w-3.5 h-3.5" /> Incassato</span>
+                      {v.verificarePagamento ? (
+                        v.pagamentoVerificato ? (
+                          <div className="flex justify-center"><ThumbsUp className="w-6 h-6 text-emerald-500 drop-shadow-sm" /></div>
+                        ) : (
+                          <button 
+                            onClick={() => isAdmin && onVerifyPayment(v.id)} 
+                            className={`p-2 rounded-xl transition-all ${isAdmin ? 'hover:scale-110 active:scale-95' : 'cursor-default'}`}
+                            title={isAdmin ? "Clicca per verificare pagamento" : "Pagamento da verificare"}
+                          >
+                            <AlertTriangle className="w-7 h-7 text-amber-500 animate-pulse" />
+                          </button>
+                        )
                       ) : (
-                        <span className={`inline-flex items-center gap-1.5 px-4 py-1.5 ${days > 7 ? 'bg-rose-100 text-rose-700 border-rose-200' : 'bg-orange-100 text-orange-700 border-orange-200'} rounded-full text-[10px] font-black uppercase tracking-widest border animate-pulse`}><Clock className="w-3.5 h-3.5" /> {days} GG</span>
+                        <span className="text-slate-200">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                      {v.incassato ? (
+                        <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full text-xs font-black uppercase tracking-widest border border-emerald-200"><CheckCircle2 className="w-4 h-4" /> Incassato</span>
+                      ) : (
+                        <div className={`inline-flex items-center gap-1.5 px-4 py-2 ${days > 15 ? 'bg-rose-100 text-rose-700 border-rose-200' : 'bg-orange-100 text-orange-700 border-orange-200'} rounded-full text-xs font-black uppercase tracking-widest border animate-pulse`}>
+                          <Clock className="w-4 h-4" /> {days} GG
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-5">
-                      <div className={`text-base font-black ${v.incassato ? 'text-emerald-700' : 'text-slate-900'}`}>€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</div>
+                      <div className={`text-sm font-black ${v.incassato ? 'text-emerald-700' : 'text-slate-900'}`}>€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</div>
                     </td>
-                    <td className="px-6 py-5 no-print text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {!v.incassato && <button onClick={() => onIncasso(v.id)} className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-2xl transition-all border border-emerald-100"><CheckCircle2 className="w-5 h-5" /></button>}
-                        <button onClick={() => setSelectedReceipt(v)} className="p-3 text-slate-300 hover:text-[#32964D] hover:bg-slate-50 rounded-2xl transition-all"><Camera className="w-5 h-5" /></button>
-                        <button onClick={() => onEdit(v)} className="p-3 text-slate-300 hover:text-amber-500 hover:bg-slate-50 rounded-2xl transition-all"><Pencil className="w-4 h-4" /></button>
-                        {isAdmin && <button onClick={() => onDelete(v.id)} className="p-3 text-slate-300 hover:text-rose-500 hover:bg-slate-50 rounded-2xl transition-all"><Trash2 className="w-4 h-4" /></button>}
-                      </div>
-                    </td>
+                    {isAdmin && (
+                      <td className="px-6 py-5 no-print text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {!v.incassato && <button onClick={() => onIncasso(v.id)} className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-2xl transition-all border border-emerald-100 shadow-sm" title="Conferma Incasso"><CheckCircle2 className="w-5 h-5" /></button>}
+                          <button onClick={() => onEdit(v)} className="p-3 text-slate-300 hover:text-amber-500 hover:bg-slate-50 rounded-2xl transition-all"><Pencil className="w-4 h-4" /></button>
+                          <button onClick={() => onDelete(v.id)} className="p-3 text-slate-300 hover:text-rose-500 hover:bg-slate-50 rounded-2xl transition-all"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
