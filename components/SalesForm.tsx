@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Vendita, Agente } from '../types';
 import { X, Send, UserCheck, Plus, Euro, Percent, CreditCard, ShieldAlert, AlertTriangle } from 'lucide-react';
 
@@ -24,6 +24,10 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
     verificarePagamento: false
   });
 
+  const sortedAgents = useMemo(() => {
+    return [...availableAgentList].sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [availableAgentList]);
+
   useEffect(() => {
     if (initialData) {
       setFormData({
@@ -37,13 +41,13 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
       });
     } else {
       // Auto-selezione se c'è un solo agente disponibile
-      if (availableAgentList.length === 1) {
-        setFormData(f => ({ ...f, agente: availableAgentList[0].nome }));
+      if (sortedAgents.length === 1) {
+        setFormData(f => ({ ...f, agente: sortedAgents[0].nome }));
       } else {
         setFormData(f => ({ ...f, agente: '' }));
       }
     }
-  }, [initialData, availableAgentList]);
+  }, [initialData, sortedAgents]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +55,7 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
     onSubmit(formData);
   };
 
-  const hasNoAgents = availableAgentList.length === 0;
+  const hasNoAgents = sortedAgents.length === 0;
 
   return (
     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
@@ -97,7 +101,7 @@ const SalesForm: React.FC<SalesFormProps> = ({ onClose, onSubmit, userEmail, ava
               onChange={e => setFormData(f => ({...f, agente: e.target.value}))}
             >
               <option value="" disabled>Seleziona Agente...</option>
-              {availableAgentList.map(agent => (
+              {sortedAgents.map(agent => (
                 <option key={agent.id} value={agent.nome}>{agent.nome}</option>
               ))}
             </select>

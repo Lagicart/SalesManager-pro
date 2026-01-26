@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Agente, Vendita } from '../types';
-import { User, FileText, Download, Mail, Euro, Clock, AlertTriangle, CheckCircle2, Search } from 'lucide-react';
+import { User, FileText, Download, Mail, Printer, Clock, CheckCircle2, Search, X, Send } from 'lucide-react';
 
 interface StatementOfAccountProps {
   agenti: Agente[];
@@ -10,6 +10,11 @@ interface StatementOfAccountProps {
 
 const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite }) => {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
+
+  const sortedAgentList = useMemo(() => {
+    return [...agenti].sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [agenti]);
 
   const selectedAgent = useMemo(() => agenti.find(a => a.id === selectedAgentId), [agenti, selectedAgentId]);
 
@@ -17,37 +22,55 @@ const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite
     if (!selectedAgent) return [];
     return vendite
       .filter(v => v.agente.toLowerCase() === selectedAgent.nome.toLowerCase() && !v.incassato)
-      .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime()); // Dal più vecchio
+      .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
   }, [selectedAgent, vendite]);
 
   const totalPending = useMemo(() => pendingSales.reduce((sum, v) => sum + v.importo, 0), [pendingSales]);
+
+  const emailText = useMemo(() => {
+    if (!selectedAgent) return "";
+    return `Spett.le ${selectedAgent.nome},
+
+Ti inviamo il riepilogo delle tue pratiche in attesa di incasso aggiornato al ${new Date().toLocaleDateString('it-IT')}.
+
+Totale Pendenza: € ${totalPending.toLocaleString('it-IT', { minimumFractionDigits: 2 })}
+Numero Pratiche: ${pendingSales.length}
+
+DETTAGLIO PRATICHE PENDENTI:
+${pendingSales.map(v => `- ${new Date(v.data).toLocaleDateString('it-IT')} | ${v.cliente} | € ${v.importo.toLocaleString('it-IT')} | [${v.metodoPagamento}]`).join('\n')}
+
+Ti preghiamo di verificare lo stato dei pagamenti e di procedere con la regolarizzazione delle posizioni aperte.
+
+Cordiali saluti,
+Amministrazione Lagicart S.r.l.`;
+  }, [selectedAgent, pendingSales, totalPending]);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const handleSendEmail = () => {
+  const confirmSendEmail = () => {
     if (!selectedAgent) return;
-    const subject = encodeURIComponent(`Lagicart SalesManager - Sollecito Estratto Conto: ${selectedAgent.nome}`);
-    const body = encodeURIComponent(
-      `Gentile ${selectedAgent.nome},\n\nTi inviamo il riepilogo delle tue pratiche in attesa di incasso aggiornato ad oggi.\n\n` +
-      `Totale Pendenza: € ${totalPending.toLocaleString('it-IT', { minimumFractionDigits: 2 })}\n` +
-      `Numero Pratiche: ${pendingSales.length}\n\n` +
-      `DETTAGLIO PENDENZE:\n` +
-      pendingSales.map(v => `- ${new Date(v.data).toLocaleDateString('it-IT')} | ${v.cliente} | € ${v.importo.toLocaleString('it-IT')} | [${v.metodoPagamento}]`).join('\n') +
-      `\n\nTi preghiamo di verificare e procedere con la chiusura delle pratiche appena possibile.\n\nCordiali saluti,\nAmministrazione Lagicart`
-    );
+    const subject = encodeURIComponent(`Lagicart S.r.l. - Estratto Conto Pendenti: ${selectedAgent.nome}`);
+    const body = encodeURIComponent(emailText);
     window.location.href = `mailto:${selectedAgent.email}?subject=${subject}&body=${body}`;
+    setShowEmailPreview(false);
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <style>{`
         @media print {
+          @page { size: A4; margin: 0.8cm; }
           aside, header, .no-print, .agent-selector { display: none !important; }
-          body { background: white !important; }
-          .print-area { display: block !important; padding: 0 !important; border: none !important; shadow: none !important; }
-          .print-header { display: flex !important; align-items: center; justify-content: space-between; border-bottom: 2px solid black; padding-bottom: 1rem; margin-bottom: 2rem; }
+          body { background: white !important; font-family: 'Helvetica', sans-serif; }
+          .print-area { display: block !important; padding: 0 !important; border: none !important; box-shadow: none !important; }
+          .print-header { display: flex !important; align-items: flex-start; justify-content: space-between; border-bottom: 2pt solid #32964D; padding-bottom: 5pt; margin-bottom: 12pt; }
+          .print-table th { padding: 3pt 5pt !important; font-size: 8.5pt !important; background: #f1f5f9 !important; -webkit-print-color-adjust: exact; }
+          .print-table td { padding: 2.5pt 5pt !important; font-size: 8.5pt !important; border-bottom: 0.5pt solid #e2e8f0 !important; }
+          .summary-box { padding: 6pt 12pt !important; border-radius: 10pt !important; margin-bottom: 10pt !important; }
+          .summary-box h3 { font-size: 14pt !important; }
+          .summary-box p { font-size: 7pt !important; }
         }
       `}</style>
 
@@ -59,7 +82,7 @@ const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite
               <FileText className="w-8 h-8 text-[#32964D]" />
               Estratto Conto Agente
             </h3>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Situazione pendenze per agente</p>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Situazione pendenze ordinata per data</p>
           </div>
           
           <div className="relative w-full md:w-80">
@@ -70,7 +93,7 @@ const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite
               onChange={e => setSelectedAgentId(e.target.value)}
             >
               <option value="">Seleziona Agente...</option>
-              {agenti.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+              {sortedAgentList.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
             </select>
           </div>
         </div>
@@ -79,74 +102,77 @@ const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite
       {!selectedAgentId ? (
         <div className="bg-white/50 border-2 border-dashed border-slate-200 rounded-[3rem] p-20 flex flex-col items-center justify-center text-slate-300 no-print">
           <User className="w-20 h-20 opacity-20 mb-4" />
-          <p className="text-sm font-black uppercase tracking-[0.2em]">Seleziona un agente per visualizzare le pendenze</p>
+          <p className="text-sm font-black uppercase tracking-[0.2em]">Scegli un agente per generare il report</p>
         </div>
       ) : (
         <div className="bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-slate-100 print-area">
-          {/* Header Report */}
-          <div className="bg-slate-900 p-10 text-white flex justify-between items-center no-print">
+          {/* Header Report (Schermo) */}
+          <div className="bg-slate-900 p-8 text-white flex flex-col lg:flex-row justify-between items-center gap-6 no-print">
             <div className="flex items-center gap-6">
-              <div className="w-16 h-16 rounded-[2rem] bg-[#32964D] flex items-center justify-center shadow-lg shadow-emerald-900/40">
-                <FileText className="w-8 h-8" />
+              <div className="w-14 h-14 rounded-2xl bg-[#32964D] flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <FileText className="w-7 h-7" />
               </div>
               <div>
-                <h2 className="text-3xl font-black uppercase tracking-tighter leading-none">{selectedAgent?.nome}</h2>
+                <h2 className="text-2xl font-black uppercase tracking-tighter leading-none">{selectedAgent?.nome}</h2>
                 <p className="text-emerald-400 text-[10px] font-black uppercase tracking-widest mt-2">{selectedAgent?.email}</p>
               </div>
             </div>
-            <div className="flex gap-3">
-              <button onClick={handleSendEmail} className="bg-white/10 hover:bg-white/20 text-white p-4 rounded-2xl transition-all flex items-center gap-2 font-black text-[10px] uppercase tracking-widest">
-                <Mail className="w-5 h-5" /> Invia Email
+            <div className="flex flex-wrap justify-center gap-2">
+              <button onClick={() => setShowEmailPreview(true)} className="bg-white/10 hover:bg-white/20 text-white px-5 py-3 rounded-xl transition-all flex items-center gap-2 font-black text-[9px] uppercase tracking-widest border border-white/5">
+                <Mail className="w-4 h-4" /> Email
               </button>
-              <button onClick={handlePrint} className="bg-[#32964D] hover:bg-[#2b7e41] text-white p-4 rounded-2xl transition-all flex items-center gap-2 font-black text-[10px] uppercase tracking-widest shadow-xl shadow-emerald-900/20">
-                <Download className="w-5 h-5" /> Esporta PDF
+              <button onClick={handlePrint} className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-3 rounded-xl transition-all flex items-center gap-2 font-black text-[9px] uppercase tracking-widest border border-white/5">
+                <Printer className="w-4 h-4" /> Stampa
+              </button>
+              <button onClick={handlePrint} className="bg-[#32964D] hover:bg-[#2b7e41] text-white px-6 py-3 rounded-xl transition-all flex items-center gap-2 font-black text-[9px] uppercase tracking-widest shadow-lg shadow-emerald-900/40">
+                <Download className="w-4 h-4" /> Salva PDF
               </button>
             </div>
           </div>
 
-          {/* Header Print Only */}
-          <div className="hidden print-header p-10">
+          {/* Header Lagicart (Solo Stampa) */}
+          <div className="hidden print-header">
              <div>
-                <h1 className="text-4xl font-black text-[#32964D]">LAGICART</h1>
-                <p className="text-xs font-bold uppercase text-slate-400">Sales & Collection Management</p>
+                <h1 className="text-2xl font-black text-[#32964D] leading-none">LAGICART S.R.L.</h1>
+                <p className="text-[7.5pt] font-bold text-slate-500 mt-0.5">ingrosso specializzato in articoli di cartoleria</p>
              </div>
              <div className="text-right">
-                <h2 className="text-2xl font-black uppercase leading-none">{selectedAgent?.nome}</h2>
-                <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase">Estratto Conto Pendenti - {new Date().toLocaleDateString('it-IT')}</p>
+                <h2 className="text-sm font-black uppercase leading-none">{selectedAgent?.nome}</h2>
+                <p className="text-[7pt] font-bold text-slate-400 mt-1 uppercase">Estratto Conto - {new Date().toLocaleDateString('it-IT')}</p>
              </div>
           </div>
 
-          <div className="p-10 space-y-10">
+          <div className="p-6 md:p-10 space-y-6">
             {/* Riepilogo Volume */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-[#32964D] p-8 rounded-[2rem] text-white shadow-xl">
-                 <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Totale Pendenza</p>
-                 <h3 className="text-4xl font-black tracking-tighter mt-1">€ {totalPending.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="bg-[#32964D] p-5 md:p-8 rounded-[1.5rem] text-white shadow-xl summary-box">
+                 <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest opacity-60">Volume Insoluto</p>
+                 <h3 className="text-2xl md:text-3xl font-black tracking-tighter mt-1">€ {totalPending.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</h3>
               </div>
-              <div className="bg-amber-100 p-8 rounded-[2rem] border border-amber-200">
-                 <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Pratiche Aperte</p>
-                 <h3 className="text-4xl font-black tracking-tighter mt-1 text-amber-900">{pendingSales.length}</h3>
+              <div className="bg-amber-100 p-5 md:p-8 rounded-[1.5rem] border border-amber-200 summary-box">
+                 <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-amber-600">Pratiche Aperte</p>
+                 <h3 className="text-2xl md:text-3xl font-black tracking-tighter mt-1 text-amber-900">{pendingSales.length}</h3>
               </div>
-              <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 flex items-center justify-center">
+              <div className="hidden md:flex bg-slate-50 p-8 rounded-[1.5rem] border border-slate-100 items-center justify-center no-print">
                  <div className="text-center">
-                    <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-[10px] font-black uppercase text-slate-400">Ordinamento cronologico</p>
+                    <Clock className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                    <p className="text-[9px] font-black uppercase text-slate-400">Ordinate per data</p>
                  </div>
               </div>
             </div>
 
-            {/* Tabella Dettaglio */}
-            <div className="space-y-4">
-              <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 ml-2">Elenco Dettagliato Pratiche</h4>
-              <div className="border border-slate-100 rounded-[2.5rem] overflow-hidden">
-                <table className="w-full text-left border-collapse">
+            {/* Tabella Dettaglio (Alta Densità) */}
+            <div className="space-y-3">
+              <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1 no-print">Dettaglio pendenze</h4>
+              <div className="border border-slate-200 rounded-[1.5rem] overflow-hidden">
+                <table className="w-full text-left border-collapse print-table">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Metodo</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ritardo</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Importo</th>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Data Pratica</th>
+                      <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
+                      <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Pagamento</th>
+                      <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Ritardo</th>
+                      <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Importo</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -154,37 +180,35 @@ const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite
                       const days = Math.floor((new Date().getTime() - new Date(v.data).getTime()) / (1000 * 60 * 60 * 24));
                       return (
                         <tr key={v.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-8 py-5 text-xs font-black text-slate-400">{new Date(v.data).toLocaleDateString('it-IT')}</td>
-                          <td className="px-8 py-5">
-                            <span className="font-black text-slate-900 uppercase text-sm tracking-tighter">{v.cliente}</span>
+                          <td className="px-4 py-2 font-bold text-slate-500">{new Date(v.data).toLocaleDateString('it-IT')}</td>
+                          <td className="px-4 py-2">
+                            <span className="font-black text-slate-900 uppercase tracking-tighter">{v.cliente}</span>
                           </td>
-                          <td className="px-8 py-5 text-center">
-                             <span className="text-[10px] font-black text-slate-500 uppercase">{v.metodoPagamento}</span>
+                          <td className="px-4 py-2 text-center">
+                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-tight">{v.metodoPagamento}</span>
                           </td>
-                          <td className="px-8 py-5 text-center">
-                             <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase ${days > 15 ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
-                                <Clock className="w-3 h-3" /> {days} giorni
+                          <td className="px-4 py-2 text-center">
+                             <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${days > 15 ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>
+                                {days} GG
                              </div>
                           </td>
-                          <td className="px-8 py-5 text-right font-black text-slate-900">€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-4 py-2 text-right font-black text-slate-900">€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
                         </tr>
                       );
                     }) : (
                       <tr>
-                        <td colSpan={5} className="px-8 py-20 text-center">
-                           <div className="flex flex-col items-center gap-4 text-emerald-500">
-                              <CheckCircle2 className="w-16 h-16 opacity-20" />
-                              <p className="text-xs font-black uppercase tracking-widest">Nessuna pendenza per questo agente</p>
-                           </div>
+                        <td colSpan={5} className="px-8 py-16 text-center text-slate-300">
+                           <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                           <p className="text-xs font-black uppercase tracking-widest">Nessuna pendenza rilevata per questo agente</p>
                         </td>
                       </tr>
                     )}
                   </tbody>
                   {pendingSales.length > 0 && (
-                    <tfoot>
-                       <tr className="bg-slate-900 text-white">
-                          <td colSpan={4} className="px-8 py-6 text-xs font-black uppercase tracking-[0.2em] text-right">TOTALE DOVUTO:</td>
-                          <td className="px-8 py-6 text-xl font-black text-right">€ {totalPending.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
+                    <tfoot className="bg-slate-900 text-white">
+                       <tr>
+                          <td colSpan={4} className="px-4 py-4 text-[9px] font-black uppercase tracking-[0.2em] text-right">Saldo Totale dovuto:</td>
+                          <td className="px-4 py-4 text-base font-black text-right">€ {totalPending.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
                        </tr>
                     </tfoot>
                   )}
@@ -192,9 +216,46 @@ const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite
               </div>
             </div>
 
-            <div className="pt-10 border-t border-slate-100 flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-300 italic">
-               <span>Documento generato da Lagicart SalesManager</span>
-               <span>Ref: {selectedAgentId}</span>
+            <div className="pt-6 border-t border-slate-100 flex items-center justify-between text-[7.5px] font-black uppercase tracking-widest text-slate-300 italic">
+               <span>Lagicart S.r.l. - Gestione Crediti SalesManager</span>
+               <span>Generato il {new Date().toLocaleString('it-IT')}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Anteprima Email */}
+      {showEmailPreview && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[500] flex items-center justify-center p-4 no-print">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="bg-[#32964D] p-6 text-white flex justify-between items-center">
+               <div className="flex items-center gap-3">
+                  <Mail className="w-5 h-5" />
+                  <h3 className="font-black uppercase tracking-tighter">Anteprima Messaggio di Sollecito</h3>
+               </div>
+               <button onClick={() => setShowEmailPreview(false)} className="p-2 hover:bg-black/10 rounded-xl transition-colors"><X /></button>
+            </div>
+            <div className="p-8 space-y-4">
+               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                  <div className="mb-4 pb-4 border-b border-slate-200 flex flex-col gap-1">
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Oggetto:</p>
+                     <p className="text-xs font-bold text-slate-900">Lagicart S.r.l. - Estratto Conto Pendenti: {selectedAgent?.nome}</p>
+                  </div>
+                  <pre className="text-xs font-sans whitespace-pre-wrap text-slate-700 leading-relaxed max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
+                     {emailText}
+                  </pre>
+               </div>
+               <div className="flex gap-3 pt-2">
+                  <button onClick={() => setShowEmailPreview(false)} className="flex-1 px-6 py-4 bg-slate-100 text-slate-500 font-black text-xs uppercase rounded-2xl hover:bg-slate-200 transition-all">
+                     Torna indietro
+                  </button>
+                  <button onClick={confirmSendEmail} className="flex-[2] px-6 py-4 bg-[#32964D] text-white font-black text-xs uppercase rounded-2xl shadow-lg hover:bg-[#2b7e41] transition-all flex items-center justify-center gap-3">
+                     <Send className="w-4 h-4" /> Apri client di posta
+                  </button>
+               </div>
+               <p className="text-center text-[9px] text-slate-400 font-bold uppercase mt-2">
+                  Nota: Questa azione aprirà il tuo programma di posta predefinito.
+               </p>
             </div>
           </div>
         </div>
