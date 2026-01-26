@@ -127,7 +127,7 @@ const App: React.FC = () => {
         const cloudData: Vendita[] = vRes.data.map(d => ({
           id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
           metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
-          operatoreEmail: d.operatore_email.toLowerCase(),
+          operatoreEmail: (d.operatore_email || '').toLowerCase(),
           incassato: d.incassato, 
           verificarePagamento: d.verificare_pagamento,
           pagamentoVerificato: d.pagamento_verificato,
@@ -142,7 +142,7 @@ const App: React.FC = () => {
       
       if (aRes.data) {
         setAgenti(aRes.data.map(d => ({ 
-          id: d.id, nome: d.nome, email: d.email, operatoreEmail: d.operatore_email.toLowerCase(),
+          id: d.id, nome: d.nome, email: d.email, operatoreEmail: (d.operatore_email || '').toLowerCase(),
           telefono: d.telefono, zona: d.zona
         })));
       }
@@ -195,9 +195,11 @@ const App: React.FC = () => {
     if (!supabase) return;
     try {
       const payload: any = { ...data };
+      
+      // Mapping per la tabella VENDITE
       if (table === 'vendite') {
         payload.metodo_pagamento = data.metodoPagamento;
-        payload.operatore_email = data.operatoreEmail.toLowerCase();
+        payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
         payload.note_amministrazione = data.noteAmministrazione;
         payload.ultimo_mittente = data.ultimo_mittente;
         payload.verificare_pagamento = data.verificarePagamento;
@@ -208,10 +210,22 @@ const App: React.FC = () => {
         delete payload.verificarePagamento;
         delete payload.pagamentoVerificato;
       }
+      
+      // Mapping per la tabella AGENTI (Risolve il bug della "memoria" degli agenti)
+      if (table === 'agenti') {
+        payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
+        delete payload.operatoreEmail;
+      }
+
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
+      
+      // Dopo il salvataggio rinfreschiamo i dati
       fetchData(true);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error("Errore Sync Cloud:", e);
+      addToast("Errore di sincronizzazione Cloud", "error");
+    }
   };
 
   // ANAGRAFICA: Tutti vedono tutti (richiesta utente)
@@ -231,7 +245,7 @@ const App: React.FC = () => {
 
     // Altrimenti, vede solo gli agenti assegnati a lui (o all'utente simulato)
     const activeEmail = (viewAsEmail || currentUser.email).toLowerCase();
-    return agenti.filter(a => a.operatoreEmail.toLowerCase() === activeEmail);
+    return agenti.filter(a => (a.operatoreEmail || '').toLowerCase() === activeEmail);
   }, [agenti, currentUser, viewAsEmail]);
 
   const filteredVendite = useMemo(() => {
@@ -343,7 +357,9 @@ const App: React.FC = () => {
                 isAdmin={currentUser.role === 'admin'} 
                 currentUser={currentUser} 
                 onUpdate={async (a) => {
+                  // Aggiornamento locale immediato
                   setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]);
+                  // Aggiornamento cloud con mapping corretto
                   await syncToCloud('agenti', a);
                 }} 
                 onDelete={async (id) => {
