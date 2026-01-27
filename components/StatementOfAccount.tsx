@@ -1,15 +1,17 @@
 
 import React, { useState, useMemo } from 'react';
 import { Agente, Vendita } from '../types';
-import { User, FileText, Mail, Printer, Clock, CheckCircle2, Search, X, Send } from 'lucide-react';
+import { User, FileText, Mail, Printer, Clock, CheckCircle2, Search, X, Send, Filter, Zap } from 'lucide-react';
 
 interface StatementOfAccountProps {
   agenti: Agente[];
   vendite: Vendita[];
+  metodiDisponibili: string[];
 }
 
-const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite }) => {
+const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite, metodiDisponibili }) => {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  const [selectedMethods, setSelectedMethods] = useState<string[]>([]);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
 
   const sortedAgentList = useMemo(() => {
@@ -18,12 +20,25 @@ const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite
 
   const selectedAgent = useMemo(() => agenti.find(a => a.id === selectedAgentId), [agenti, selectedAgentId]);
 
+  const toggleMethod = (metodo: string) => {
+    setSelectedMethods(prev => 
+      prev.includes(metodo) 
+        ? prev.filter(m => m !== metodo) 
+        : [...prev, metodo]
+    );
+  };
+
   const pendingSales = useMemo(() => {
     if (!selectedAgent) return [];
     return vendite
-      .filter(v => v.agente.toLowerCase() === selectedAgent.nome.toLowerCase() && !v.incassato)
+      .filter(v => {
+        const matchAgent = v.agente.toLowerCase() === selectedAgent.nome.toLowerCase();
+        const matchStatus = !v.incassato;
+        const matchMethod = selectedMethods.length === 0 || selectedMethods.includes(v.metodoPagamento);
+        return matchAgent && matchStatus && matchMethod;
+      })
       .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
-  }, [selectedAgent, vendite]);
+  }, [selectedAgent, vendite, selectedMethods]);
 
   const totalPending = useMemo(() => pendingSales.reduce((sum, v) => sum + v.importo, 0), [pendingSales]);
 
@@ -37,7 +52,7 @@ Totale Pendenza: € ${totalPending.toLocaleString('it-IT', { minimumFractionDig
 Numero Pratiche: ${pendingSales.length}
 
 DETTAGLIO PRATICHE PENDENTI:
-${pendingSales.map(v => `- ${new Date(v.data).toLocaleDateString('it-IT')} | ${v.cliente} | € ${v.importo.toLocaleString('it-IT')} | [${v.metodoPagamento}]`).join('\n')}
+${pendingSales.map(v => `- ${new Date(v.data).toLocaleDateString('it-IT')} | ${v.cliente} | € ${v.importo.toLocaleString('it-IT')} | [${v.metodoPagamento}]${v.sconto ? ' (Sconto: ' + v.sconto + ')' : ''}`).join('\n')}
 
 Ti preghiamo di verificare lo stato dei pagamenti e di procedere con la regolarizzazione delle posizioni aperte.
 
@@ -62,7 +77,7 @@ Amministrazione Lagicart S.r.l.`;
       <style>{`
         @media print {
           @page { size: A4; margin: 1cm; }
-          aside, header, .no-print, .agent-selector { display: none !important; }
+          aside, header, .no-print, .agent-selector, .filter-area { display: none !important; }
           body { background: white !important; font-family: Arial, sans-serif; color: black; }
           
           .print-area { 
@@ -114,12 +129,12 @@ Amministrazione Lagicart S.r.l.`;
         }
       `}</style>
 
-      {/* Selettore Agente */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 no-print agent-selector">
+      {/* Selettore Agente e Filtri Pagamento */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 no-print agent-selector space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter flex items-center gap-3">
-              <FileText className="w-8 h-8 text-[#32964D]" />
+          <div className="flex items-center gap-3">
+            <FileText className="w-8 h-8 text-[#32964D]" />
+            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
               Estratto Conto Agente
             </h3>
           </div>
@@ -136,6 +151,33 @@ Amministrazione Lagicart S.r.l.`;
             </select>
           </div>
         </div>
+
+        {selectedAgentId && (
+          <div className="pt-6 border-t border-slate-100 filter-area">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block flex items-center gap-2">
+              <Filter className="w-3 h-3" /> Filtra Modalità Pagamento (Scelta Multipla)
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {metodiDisponibili.map(m => (
+                <button
+                  key={m}
+                  onClick={() => toggleMethod(m)}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border-2 transition-all ${selectedMethods.includes(m) ? 'bg-[#32964D] border-[#32964D] text-white shadow-lg' : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-slate-200'}`}
+                >
+                  {m}
+                </button>
+              ))}
+              {selectedMethods.length > 0 && (
+                <button 
+                  onClick={() => setSelectedMethods([])}
+                  className="px-4 py-2 text-[10px] font-black text-rose-500 uppercase hover:bg-rose-50 rounded-xl transition-all"
+                >
+                  Resetta Filtri
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {!selectedAgentId ? (
@@ -209,6 +251,7 @@ Amministrazione Lagicart S.r.l.`;
                       <th className="px-6 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Cliente</th>
                       <th className="px-6 py-5 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Pagamento</th>
                       <th className="px-6 py-5 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Ritardo</th>
+                      <th className="px-6 py-5 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Sconto</th>
                       <th className="px-6 py-5 text-xs font-black text-slate-400 uppercase tracking-widest text-right">Importo</th>
                     </tr>
                   </thead>
@@ -229,11 +272,18 @@ Amministrazione Lagicart S.r.l.`;
                                 {days} GIORNI
                              </div>
                           </td>
+                          <td className="px-6 py-4 text-center">
+                             {v.sconto ? (
+                               <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-amber-600 uppercase bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
+                                 <Zap className="w-3 h-3" /> {v.sconto}
+                               </span>
+                             ) : <span className="text-slate-200">-</span>}
+                          </td>
                           <td className="px-6 py-4 text-right font-black text-slate-900 text-sm">€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
                         </tr>
                       );
                     }) : (
-                      <tr><td colSpan={5} className="p-20 text-center text-slate-300 font-black uppercase tracking-widest">Nessuna pendenza</td></tr>
+                      <tr><td colSpan={6} className="p-20 text-center text-slate-300 font-black uppercase tracking-widest">Nessuna pendenza corrispondente</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -248,6 +298,7 @@ Amministrazione Lagicart S.r.l.`;
                       <th style={{ textAlign: 'left' }}>Cliente</th>
                       <th className="text-center">Pagamento</th>
                       <th className="text-center">Ritardo</th>
+                      <th className="text-center">Sconto</th>
                       <th style={{ textAlign: 'right' }}>Importo</th>
                     </tr>
                   </thead>
@@ -260,12 +311,13 @@ Amministrazione Lagicart S.r.l.`;
                           <td style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>{v.cliente}</td>
                           <td className="text-center">{v.metodoPagamento}</td>
                           <td className="text-center">{days} GG</td>
+                          <td className="text-center">{v.sconto || '-'}</td>
                           <td style={{ textAlign: 'right', fontWeight: 'bold' }}>€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
                         </tr>
                       );
                     })}
                     <tr style={{ backgroundColor: '#f8fafc' }}>
-                       <td colSpan={4} style={{ textAlign: 'right', fontWeight: '900', textTransform: 'uppercase', padding: '12pt' }}>Saldo Totale Dovuto:</td>
+                       <td colSpan={5} style={{ textAlign: 'right', fontWeight: '900', textTransform: 'uppercase', padding: '12pt' }}>Saldo Totale Dovuto:</td>
                        <td style={{ textAlign: 'right', fontWeight: '900', fontSize: '14pt', padding: '12pt', color: '#32964D' }}>€ {totalPending.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
                     </tr>
                   </tbody>
