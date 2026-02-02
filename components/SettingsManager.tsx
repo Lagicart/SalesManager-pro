@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Trash2, CreditCard, Server, Mail, ShieldCheck, Globe, Key, User } from 'lucide-react';
+import { Plus, Trash2, CreditCard, Server, Mail, ShieldCheck, Globe, Key, User, LifeBuoy, AlertTriangle, CloudUpload, Download } from 'lucide-react';
 import { EmailConfig } from '../types';
 
 interface SettingsManagerProps {
@@ -11,9 +11,11 @@ interface SettingsManagerProps {
   onDbConfigChange: (config: {url: string, key: string} | null) => void;
   emailConfig: EmailConfig;
   onEmailConfigChange: (config: EmailConfig) => void;
+  onEmergencyPush?: () => Promise<void>;
+  onEmergencyExport?: () => void;
 }
 
-const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isAdmin, dbConfig, onDbConfigChange, emailConfig, onEmailConfigChange }) => {
+const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isAdmin, dbConfig, onDbConfigChange, emailConfig, onEmailConfigChange, onEmergencyPush, onEmergencyExport }) => {
   const [nuovoMetodo, setNuovoMetodo] = useState('');
   const [tempUrl, setTempUrl] = useState(dbConfig?.url || '');
   const [tempKey, setTempKey] = useState(dbConfig?.key || '');
@@ -28,25 +30,25 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
     setTempEmailConfig({
       ...tempEmailConfig,
       provider: 'smtp',
-      smtpServer: 'smtp.gmail.com',
-      smtpPort: '465',
+      smtp_server: 'smtp.gmail.com',
+      smtp_port: '465',
     });
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-24">
       
-      {/* SEZIONE PERSONALE: CONFIGURAZIONE EMAIL (Per tutti) */}
+      {/* SEZIONE PERSONALE: CONFIGURAZIONE EMAIL */}
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="bg-emerald-50 p-2 rounded-xl"><Mail className="w-6 h-6 text-[#32964D]" /></div>
             <div>
-              <h3 className="text-xl font-bold text-slate-900">La tua Email (Google Workspace)</h3>
-              <p className="text-xs text-slate-500 font-medium">Configura come invierai gli estratti conto agli agenti.</p>
+              <h3 className="text-xl font-bold text-slate-900">La tua Email</h3>
+              <p className="text-xs text-slate-500 font-medium">Configura i parametri per l'invio degli estratti conto.</p>
             </div>
           </div>
-          <button onClick={setGoogleDefaults} className="text-[10px] font-black text-sky-600 bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-100 uppercase">Parametri Gmail</button>
+          <button onClick={setGoogleDefaults} className="text-[10px] font-black text-sky-600 bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-100 uppercase">Predefiniti Gmail</button>
         </div>
 
         <form onSubmit={handleSaveEmail} className="space-y-6">
@@ -55,7 +57,7 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
               <User className="w-5 h-5" /><span className="text-xs font-black uppercase">Client Locale</span>
             </button>
             <button type="button" onClick={() => setTempEmailConfig({...tempEmailConfig, provider: 'smtp'})} className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${tempEmailConfig.provider === 'smtp' ? 'border-[#32964D] bg-emerald-50 text-[#32964D]' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
-              <Globe className="w-5 h-5" /><span className="text-xs font-black uppercase">Invio Diretto (SMTP)</span>
+              <Globe className="w-5 h-5" /><span className="text-xs font-black uppercase">Direct SMTP (Google)</span>
             </button>
           </div>
 
@@ -63,27 +65,27 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
             <div className="space-y-4 pt-6 border-t border-slate-100 animate-in slide-in-from-top-2">
               <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start gap-4 mb-4">
                 <ShieldCheck className="w-5 h-5 text-amber-600 mt-1" />
-                <p className="text-[10px] text-amber-700 leading-relaxed">Inserisci il tuo indirizzo email aziendale e la <b>"Password per le App"</b> generata dal tuo account Google. Questo permetterà all'app di inviare mail a tuo nome.</p>
+                <p className="text-[10px] text-amber-700 leading-relaxed">Inserisci il tuo indirizzo email e la <b>"Password per le App"</b> di Google.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Il tuo Nome (In calce alla mail)</label>
-                  <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.fromName || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, fromName: e.target.value})} placeholder="Es: Fabiana Rossi" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Il tuo Nome</label>
+                  <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.from_name || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, from_name: e.target.value})} placeholder="Es: Fabiana Rossi" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tua Email Aziendale</label>
-                  <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.smtpUser || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, smtpUser: e.target.value})} placeholder="nome@lagicart.it" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tua Email</label>
+                  <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.smtp_user || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, smtp_user: e.target.value})} placeholder="nome@esempio.it" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password per le App Google</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password per le App</label>
                   <div className="relative">
                     <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="password" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm font-bold" value={tempEmailConfig.smtpPass || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, smtpPass: e.target.value})} placeholder="xxxx xxxx xxxx xxxx" />
+                    <input type="password" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm font-bold" value={tempEmailConfig.smtp_pass || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, smtp_pass: e.target.value})} placeholder="xxxx xxxx xxxx xxxx" />
                   </div>
                 </div>
                 <div className="space-y-1">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Server SMTP</label>
-                   <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.smtpServer || 'smtp.gmail.com'} disabled />
+                   <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.smtp_server || 'smtp.gmail.com'} disabled />
                 </div>
               </div>
             </div>
@@ -92,7 +94,6 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
         </form>
       </div>
 
-      {/* SEZIONI ADMIN (Database e Metodi) */}
       {isAdmin && (
         <>
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
@@ -104,19 +105,39 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
             </div>
           </div>
 
-          <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-            <h3 className="text-xl font-bold mb-6 flex items-center gap-3"><CreditCard className="w-6 h-6 text-slate-400" /> Metodi di Pagamento</h3>
-            <div className="flex gap-2 mb-6">
-              <input className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold uppercase" value={nuovoMetodo} onChange={e => setNuovoMetodo(e.target.value.toUpperCase())} placeholder="NUOVO METODO..." />
-              <button onClick={() => { if(nuovoMetodo) onUpdate([...metodi, nuovoMetodo]); setNuovoMetodo(''); }} className="bg-[#32964D] text-white px-6 py-3 rounded-xl font-bold"><Plus /></button>
+          <div className="bg-rose-50 p-8 rounded-3xl border border-rose-200 shadow-lg animate-in zoom-in-95">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="bg-rose-100 p-3 rounded-2xl text-rose-600"><LifeBuoy className="w-8 h-8" /></div>
+              <div>
+                <h3 className="text-xl font-black text-rose-800 uppercase tracking-tight">CENTRO RECUPERO EMERGENZA</h3>
+                <p className="text-xs text-rose-600 font-bold uppercase tracking-widest">Usa per recuperare dati persi</p>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              {metodi.map(m => (
-                <div key={m} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
-                  <span className="font-bold text-slate-700 text-sm">{m}</span>
-                  <button onClick={() => onUpdate(metodi.filter(x => x !== m))} className="text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
-                </div>
-              ))}
+            
+            <div className="bg-white/50 p-4 rounded-2xl border border-rose-100 mb-6 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-600 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-rose-700 leading-relaxed font-medium">
+                <p className="mb-2">Se il Cloud è stato azzerato, segui questi passaggi:</p>
+                <ol className="list-decimal ml-4 space-y-1">
+                  <li><b>Scarica il Backup</b>: Salva un file con i dati attuali di questo PC.</li>
+                  <li><b>Ripristina Cloud</b>: Carica i dati di questo PC sul server vuoto.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button 
+                onClick={onEmergencyExport}
+                className="bg-white text-rose-600 border-2 border-rose-200 font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-sm hover:bg-rose-50 transition-all uppercase tracking-widest text-[10px]"
+              >
+                <Download className="w-4 h-4" /> Scarica Backup locale (.json)
+              </button>
+              <button 
+                onClick={onEmergencyPush}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all uppercase tracking-widest text-[10px]"
+              >
+                <CloudUpload className="w-4 h-4" /> Ripristina Cloud da qui
+              </button>
             </div>
           </div>
         </>

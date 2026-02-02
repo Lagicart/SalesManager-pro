@@ -38,11 +38,11 @@ export interface Vendita {
 export interface EmailConfig {
   operatore_email: string;
   provider: 'local' | 'smtp';
-  fromName?: string;
-  smtpServer?: string;
-  smtpPort?: string;
-  smtpUser?: string;
-  smtpPass?: string; // Password per le app di Google
+  from_name?: string;
+  smtp_server?: string;
+  smtp_port?: string;
+  smtp_user?: string;
+  smtp_pass?: string;
 }
 
 export const ADMIN_EMAIL = 'admin@example.com';

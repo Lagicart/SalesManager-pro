@@ -1,12 +1,13 @@
 
-# 🚀 Guida alla Sincronizzazione in Ufficio
+# 🚀 Guida alla Sincronizzazione Cloud (Lagicart)
 
-Per far sì che tutti gli operatori vedano gli stessi dati istantaneamente:
+Per far sì che tutti gli operatori vedano gli stessi dati e possano inviare mail con la propria configurazione:
 
-1. **Crea Progetto**: Vai su [Supabase.com](https://supabase.com) e crea un progetto.
-2. **Crea Tabelle**: Clicca su "SQL Editor" e incolla il codice fornito:
+1. **Crea Progetto**: Vai su [Supabase.com](https://supabase.com).
+2. **Crea Tabelle**: Clicca su **SQL Editor** -> **New Query** e incolla questo script (sovrascrive le tabelle esistenti):
 
 ```sql
+-- 1. Tabella Vendite
 CREATE TABLE IF NOT EXISTS vendite (
   id TEXT PRIMARY KEY,
   data DATE DEFAULT CURRENT_DATE,
@@ -26,29 +27,37 @@ CREATE TABLE IF NOT EXISTS vendite (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
+-- 2. Tabella Configurazione Email
 CREATE TABLE IF NOT EXISTS configurazioni_email (
   operatore_email TEXT PRIMARY KEY,
   provider TEXT DEFAULT 'local',
-  fromName TEXT,
-  smtpServer TEXT DEFAULT 'smtp.gmail.com',
-  smtpPort TEXT DEFAULT '465',
-  smtpUser TEXT,
-  smtpPass TEXT
+  from_name TEXT,
+  smtp_server TEXT DEFAULT 'smtp.gmail.com',
+  smtp_port TEXT DEFAULT '465',
+  smtp_user TEXT,
+  smtp_pass TEXT
 );
 
+-- 3. Tabella Agenti
 CREATE TABLE IF NOT EXISTS agenti (
-  id TEXT PRIMARY KEY, nome TEXT, email TEXT, operatore_email TEXT, telefono TEXT, zona TEXT
+  id TEXT PRIMARY KEY, 
+  nome TEXT, 
+  email TEXT, 
+  operatore_email TEXT, 
+  telefono TEXT, 
+  zona TEXT
 );
 
+-- 4. Tabella Operatori
 CREATE TABLE IF NOT EXISTS operatori (
-  id TEXT PRIMARY KEY, nome TEXT, email TEXT UNIQUE, password TEXT, role TEXT
+  id TEXT PRIMARY KEY, 
+  nome TEXT, 
+  email TEXT UNIQUE, 
+  password TEXT, 
+  role TEXT
 );
 
--- REPLICA IDENTITY FULL E DISABILITA RLS (PER SEMPLICITÀ UFFICIO)
-ALTER TABLE vendite REPLICA IDENTITY FULL;
-ALTER TABLE agenti REPLICA IDENTITY FULL;
-ALTER TABLE operatori REPLICA IDENTITY FULL;
-ALTER TABLE configurazioni_email REPLICA IDENTITY FULL;
+-- 5. DISABILITA RLS (Per uso ufficio semplificato)
 ALTER TABLE vendite DISABLE ROW LEVEL SECURITY;
 ALTER TABLE agenti DISABLE ROW LEVEL SECURITY;
 ALTER TABLE operatori DISABLE ROW LEVEL SECURITY;
@@ -60,6 +69,10 @@ GRANT ALL ON TABLE operatori TO anon;
 GRANT ALL ON TABLE configurazioni_email TO anon;
 ```
 
-3. **Ottieni Chiavi**: Vai in `Settings` -> `API` e copia `Project URL` e `anon public key`.
-4. **Collega l'App**: Apri questa app, vai in **Impostazioni** e incolla i due valori.
-5. **Configura Email Personale**: Ogni operatore deve andare in **Impostazioni** e inserire la propria Password per le App Google.
+3. **Collega l'App**: 
+   - Vai in `Settings` -> `API` su Supabase.
+   - Copia `Project URL` e `anon public key`.
+   - Incolla questi dati nella sezione **Impostazioni** dell'app Lagicart.
+4. **Configura Gmail**:
+   - Ogni operatore deve generare la propria **"Password per le App"** nelle impostazioni Google.
+   - Inseriscila in **Impostazioni** -> **Direct SMTP**.
