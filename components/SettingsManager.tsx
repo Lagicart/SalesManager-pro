@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Trash2, CreditCard, Server, Mail, ShieldCheck, Globe, Key, User, LifeBuoy, AlertTriangle, CloudUpload, Download } from 'lucide-react';
+import { Plus, Trash2, CreditCard, Server, Mail, ShieldCheck, Globe, Key, User, LifeBuoy, AlertTriangle, CloudUpload, Download, FileJson } from 'lucide-react';
 import { EmailConfig } from '../types';
 
 interface SettingsManagerProps {
@@ -13,9 +13,10 @@ interface SettingsManagerProps {
   onEmailConfigChange: (config: EmailConfig) => void;
   onEmergencyPush?: () => Promise<void>;
   onEmergencyExport?: () => void;
+  onEmergencyImport?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isAdmin, dbConfig, onDbConfigChange, emailConfig, onEmailConfigChange, onEmergencyPush, onEmergencyExport }) => {
+const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isAdmin, dbConfig, onDbConfigChange, emailConfig, onEmailConfigChange, onEmergencyPush, onEmergencyExport, onEmergencyImport }) => {
   const [nuovoMetodo, setNuovoMetodo] = useState('');
   const [tempUrl, setTempUrl] = useState(dbConfig?.url || '');
   const [tempKey, setTempKey] = useState(dbConfig?.key || '');
@@ -117,21 +118,27 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
             <div className="bg-white/50 p-4 rounded-2xl border border-rose-100 mb-6 flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-rose-600 mt-0.5 flex-shrink-0" />
               <div className="text-xs text-rose-700 leading-relaxed font-medium">
-                <p className="mb-2">Se il Cloud è stato azzerato, segui questi passaggi:</p>
+                <p className="mb-2">Se vedi i nomi spariti, usa il file backup che hai scaricato:</p>
                 <ol className="list-decimal ml-4 space-y-1">
-                  <li><b>Scarica il Backup</b>: Salva un file con i dati attuali di questo PC.</li>
-                  <li><b>Ripristina Cloud</b>: Carica i dati di questo PC sul server vuoto.</li>
+                  <li><b>Carica Backup</b>: Seleziona il file .json scaricato in precedenza.</li>
+                  <li><b>Ripristina Cloud</b>: Carica i dati del file sul server online.</li>
                 </ol>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <button 
                 onClick={onEmergencyExport}
                 className="bg-white text-rose-600 border-2 border-rose-200 font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-sm hover:bg-rose-50 transition-all uppercase tracking-widest text-[10px]"
               >
-                <Download className="w-4 h-4" /> Scarica Backup locale (.json)
+                <Download className="w-4 h-4" /> Esporta Backup (.json)
               </button>
+              
+              <label className="bg-rose-100 text-rose-800 border-2 border-rose-200 font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-sm hover:bg-rose-200 transition-all uppercase tracking-widest text-[10px] cursor-pointer">
+                <FileJson className="w-4 h-4" /> Carica Backup (.json)
+                <input type="file" accept=".json" onChange={onEmergencyImport} className="hidden" />
+              </label>
+
               <button 
                 onClick={onEmergencyPush}
                 className="bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all uppercase tracking-widest text-[10px]"

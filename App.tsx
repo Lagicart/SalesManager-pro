@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Vendita, Operatore, Agente, ADMIN_EMAIL, EmailConfig } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, FileText, CheckCircle2, BellRing, LifeBuoy, AlertTriangle, RefreshCw, Download, Upload, ShieldAlert } from 'lucide-react';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, FileText, CheckCircle2, BellRing, LifeBuoy, AlertTriangle, RefreshCw, Download, Upload, ShieldAlert, FileJson } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -93,7 +93,6 @@ const App: React.FC = () => {
         supabase.from('operatori').select('*')
       ]);
 
-      // PROTEZIONE: Se il Cloud è vuoto ma il Local ha dati, attiviamo l'allarme invece di sovrascrivere
       if (vRes.data && vRes.data.length === 0 && vendite.length > 5) {
         setDataLossWarning(true);
         setIsSyncing(false);
@@ -132,7 +131,6 @@ const App: React.FC = () => {
       }
     } catch (e) { 
       console.error(e); 
-      // Se c'è errore (es. tabella droppata), non svuotiamo la lista locale
     } finally { 
       setIsSyncing(false); 
     }
@@ -160,13 +158,44 @@ const App: React.FC = () => {
     addToast("Backup locale scaricato correttamente");
   };
 
+  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (json.vendite && json.agenti && json.operatori) {
+          if (window.confirm("Attenzione: caricando questo file sovrascriverai i dati attuali su questo PC. Procedere?")) {
+            setVendite(json.vendite);
+            setAgenti(json.agenti);
+            setOperatori(json.operatori);
+            localStorage.setItem('sm_vendite', JSON.stringify(json.vendite));
+            localStorage.setItem('sm_agenti', JSON.stringify(json.agenti));
+            localStorage.setItem('sm_operatori', JSON.stringify(json.operatori));
+            addToast("Dati caricati dal file con successo! Ora clicca 'Ripristina Cloud'.", "success");
+            setDataLossWarning(true); // Riattiviamo il banner per forzare il push su Cloud
+          }
+        } else {
+          addToast("Formato file non valido", "error");
+        }
+      } catch (err) {
+        addToast("Errore lettura file", "error");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const forcePushLocalToCloud = async () => {
     if (!supabase) return;
     if (!window.confirm("Attenzione: i dati su questo PC verranno caricati sul database Cloud. Confermi?")) return;
     
     setIsSyncing(true);
     try {
-      if (operatori.length > 0) await supabase.from('operatori').upsert(operatori);
+      if (operatori.length > 0) {
+        await supabase.from('operatori').upsert(operatori);
+      }
       
       if (agenti.length > 0) {
         const mappedAgenti = agenti.map(a => ({ ...a, operatore_email: a.operatoreEmail }));
@@ -254,20 +283,22 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
       
-      {/* BANNER CRISI / PERDITA DATI */}
       {dataLossWarning && (
         <div className="fixed top-0 left-0 w-full bg-rose-600 text-white z-[9999] p-4 shadow-2xl animate-in slide-in-from-top duration-500">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="bg-white/20 p-2 rounded-xl"><ShieldAlert className="w-6 h-6 animate-pulse" /></div>
               <div>
-                <p className="font-black uppercase tracking-tighter text-lg">ATTENZIONE: DATABASE CLOUD VUOTO!</p>
-                <p className="text-xs font-bold opacity-80 uppercase tracking-widest">L'app ha bloccato la sincronizzazione per evitare di cancellare i dati salvati su questo PC.</p>
+                <p className="font-black uppercase tracking-tighter text-lg">MODALITÀ RECUPERO ATTIVA</p>
+                <p className="text-xs font-bold opacity-80 uppercase tracking-widest">Sincronizzazione Cloud in pausa per proteggere i tuoi dati locali.</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={exportData} className="bg-white text-rose-600 px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-100 transition-all"><Download className="w-4 h-4" /> Esporta Backup Locale</button>
-              <button onClick={forcePushLocalToCloud} className="bg-rose-900 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-rose-950 transition-all"><Upload className="w-4 h-4" /> Ripristina Cloud da qui</button>
+              <label className="bg-white text-rose-600 px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-100 transition-all cursor-pointer">
+                <FileJson className="w-4 h-4" /> Carica Backup (.json)
+                <input type="file" accept=".json" onChange={importData} className="hidden" />
+              </label>
+              <button onClick={forcePushLocalToCloud} className="bg-rose-900 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-rose-950 transition-all shadow-lg"><Upload className="w-4 h-4" /> Ripristina Cloud da qui</button>
             </div>
           </div>
         </div>
@@ -309,7 +340,7 @@ const App: React.FC = () => {
 
         <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
           <div className="max-w-7xl mx-auto">
-            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={saveEmailConfig} onEmergencyPush={forcePushLocalToCloud} onEmergencyExport={exportData} />}
+            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={saveEmailConfig} onEmergencyPush={forcePushLocalToCloud} onEmergencyExport={exportData} onEmergencyImport={importData} />}
             {view === 'statement' && emailConfig && <StatementOfAccount agenti={agenti} vendite={filteredVendite} metodiDisponibili={metodiPagamento} emailConfig={emailConfig} />}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
             {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} onVerifyPayment={(id) => syncToCloud('vendite', {id, pagamentoVerificato: true})} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={(id) => supabase?.from('vendite').delete().eq('id', id).then(() => fetchData(true))} currentUserNome={currentUser.nome} />}
