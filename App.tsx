@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Vendita, Operatore, Agente, ADMIN_EMAIL } from './types';
+import { Vendita, Operatore, Agente, ADMIN_EMAIL, EmailConfig } from './types';
 import { Plus, List, TrendingUp, Contact2, Users, Settings, FileText, CheckCircle2, BellRing } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
@@ -32,32 +32,25 @@ const App: React.FC = () => {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const lastFetchRef = useRef<number>(0);
 
-  const addToast = (message: string, type: 'success' | 'error' | 'info' | 'notification' = 'success') => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 8000);
-  };
-
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('sm_is_logged_in') === 'true');
   const [currentUser, setCurrentUser] = useState<Operatore | null>(() => {
     const saved = localStorage.getItem('sm_current_user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [viewAsEmail, setViewAsEmail] = useState<string | null>(null);
+  const [emailConfig, setEmailConfig] = useState<EmailConfig | null>(null);
 
-  const ensureAdmin = useCallback((list: Operatore[]): Operatore[] => {
-    const hasAdmin = list.find(o => o.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
-    if (!hasAdmin) {
-      const adminOp: Operatore = { id: 'op-admin', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' };
-      return [adminOp, ...list];
-    }
-    return list;
-  }, []);
+  const addToast = (message: string, type: 'success' | 'error' | 'info' | 'notification' = 'success') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 8000);
+  };
+
+  const [viewAsEmail, setViewAsEmail] = useState<string | null>(null);
 
   const [operatori, setOperatori] = useState<Operatore[]>(() => {
     const saved = localStorage.getItem('sm_operatori');
-    return saved ? ensureAdmin(JSON.parse(saved)) : [{ id: 'op1', nome: 'Amministratore', email: ADMIN_EMAIL, role: 'admin', password: 'admin' }];
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [vendite, setVendite] = useState<Vendita[]>(() => {
@@ -81,9 +74,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
-      try {
-        setSupabase(createClient(dbConfig.url, dbConfig.key));
-      } catch (e) { console.error(e); }
+      setSupabase(createClient(dbConfig.url, dbConfig.key));
     }
   }, [dbConfig]);
 
@@ -101,54 +92,34 @@ const App: React.FC = () => {
         supabase.from('operatori').select('*')
       ]);
 
-      if (vRes.data) {
-        setVendite(vRes.data.map(d => ({
-          id: d.id, data: d.data, cliente: d.cliente, importo: Number(d.importo),
-          metodoPagamento: d.metodo_pagamento, sconto: d.sconto, agente: d.agente,
-          operatoreEmail: (d.operatore_email || '').toLowerCase(),
-          incassato: d.incassato, verificarePagamento: d.verificare_pagamento,
-          pagamentoVerificato: d.pagamento_verificato, noteAmministrazione: d.note_amministrazione || '',
-          notizie: d.notizie || '', nuove_notizie: d.nuove_notizie || false,
-          ultimo_mittente: d.ultimo_mittente || '', created_at: d.created_at
-        })));
+      if (vRes.data) setVendite(vRes.data.map(d => ({ ...d, importo: Number(d.importo), metodoPagamento: d.metodo_pagamento, operatoreEmail: (d.operatore_email || '').toLowerCase() })));
+      if (aRes.data) setAgenti(aRes.data.map(d => ({ ...d, operatoreEmail: (d.operatore_email || '').toLowerCase() })));
+      if (oRes.data) setOperatori(oRes.data as Operatore[]);
+
+      // Carica configurazione email personale
+      if (currentUser) {
+        const { data: eData } = await supabase.from('configurazioni_email').select('*').eq('operatore_email', currentUser.email.toLowerCase()).maybeSingle();
+        if (eData) setEmailConfig(eData);
+        else setEmailConfig({ operatore_email: currentUser.email.toLowerCase(), provider: 'local', fromName: currentUser.nome });
       }
-      
-      if (aRes.data) {
-        setAgenti(aRes.data.map(d => ({ 
-          id: d.id, nome: d.nome, email: d.email, 
-          operatoreEmail: (d.operatore_email || '').toLowerCase(),
-          telefono: d.telefono, zona: d.zona
-        })));
-      }
-      if (oRes.data) setOperatori(ensureAdmin(oRes.data as Operatore[]));
     } catch (e) { console.error(e); } finally { setIsSyncing(false); }
-  }, [supabase, ensureAdmin]);
+  }, [supabase, currentUser]);
 
   useEffect(() => {
     if (supabase && isLoggedIn && currentUser) {
-      const userEmail = currentUser.email.toLowerCase();
-      const nSub = supabase.channel('realtime-notifiche').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifiche' }, (p) => {
-        if (p.new.to_email.toLowerCase() === userEmail) addToast(p.new.message, 'notification');
-      }).subscribe();
-      const vSub = supabase.channel('realtime-data').on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData(true)).subscribe();
-      return () => { supabase.removeChannel(nSub); supabase.removeChannel(vSub); };
+      fetchData(true);
     }
-  }, [supabase, isLoggedIn, currentUser, fetchData]);
+  }, [supabase, isLoggedIn, currentUser]);
 
-  useEffect(() => { localStorage.setItem('sm_vendite', JSON.stringify(vendite)); }, [vendite]);
-  useEffect(() => { localStorage.setItem('sm_agenti', JSON.stringify(agenti)); }, [agenti]);
-  useEffect(() => { localStorage.setItem('sm_operatori', JSON.stringify(operatori)); }, [operatori]);
-  useEffect(() => { localStorage.setItem('sm_metodi', JSON.stringify(metodiPagamento)); }, [metodiPagamento]);
-  useEffect(() => { localStorage.setItem('sm_db_config', JSON.stringify(dbConfig)); }, [dbConfig]);
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('sm_current_user', JSON.stringify(currentUser));
-      localStorage.setItem('sm_is_logged_in', 'true');
-    } else {
-      localStorage.removeItem('sm_current_user');
-      localStorage.setItem('sm_is_logged_in', 'false');
-    }
-  }, [currentUser]);
+  const saveEmailConfig = async (config: EmailConfig) => {
+    if (!supabase || !currentUser) return;
+    try {
+      const { error } = await supabase.from('configurazioni_email').upsert(config);
+      if (error) throw error;
+      setEmailConfig(config);
+      addToast("Impostazioni Email salvate");
+    } catch (e) { addToast("Errore salvataggio email", "error"); }
+  };
 
   const syncToCloud = async (table: string, data: any) => {
     if (!supabase) return;
@@ -158,20 +129,11 @@ const App: React.FC = () => {
         payload.metodo_pagamento = data.metodoPagamento;
         payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
         payload.note_amministrazione = data.noteAmministrazione;
-        payload.ultimo_mittente = data.ultimo_mittente;
-        payload.verificare_pagamento = data.verificarePagamento;
-        payload.pagamento_verificato = data.pagamentoVerificato;
-        delete payload.metodoPagamento; delete payload.operatoreEmail; delete payload.noteAmministrazione;
-        delete payload.verificarePagamento; delete payload.pagamentoVerificato;
-      }
-      if (table === 'agenti') {
-        payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
-        delete payload.operatoreEmail;
       }
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
       fetchData(true);
-    } catch (e) { addToast("Errore di sincronizzazione Cloud", "error"); }
+    } catch (e) { addToast("Errore Cloud", "error"); }
   };
 
   const filteredVendite = useMemo(() => {
@@ -185,14 +147,14 @@ const App: React.FC = () => {
     return list;
   }, [vendite, currentUser, viewAsEmail]);
 
-  if (!isLoggedIn || !currentUser) return <LoginScreen operatori={operatori} onLogin={(u) => { setCurrentUser(u); setIsLoggedIn(true); setTimeout(() => fetchData(true), 500); }} onConfigChange={setDbConfig} />;
+  if (!isLoggedIn || !currentUser) return <LoginScreen operatori={operatori} onLogin={(u) => { setCurrentUser(u); setIsLoggedIn(true); }} onConfigChange={setDbConfig} />;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
       <div className="fixed bottom-6 right-6 z-[200] space-y-3 pointer-events-none no-print">
         {toasts.map(t => (
-          <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border pointer-events-auto animate-in slide-in-from-right duration-300 ${t.type === 'success' ? 'bg-emerald-900 text-white border-emerald-500/30' : t.type === 'error' ? 'bg-rose-900 text-white border-rose-500/30' : t.type === 'notification' ? 'bg-amber-600 text-white border-white/20' : 'bg-slate-900 text-white border-slate-700'}`}>
-            {t.type === 'notification' ? <BellRing className="w-5 h-5 animate-bounce" /> : <CheckCircle2 className="w-5 h-5" />}
+          <div key={t.id} className="flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl bg-slate-900 text-white border border-slate-700 pointer-events-auto animate-in slide-in-from-right">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
             <span className="text-sm font-bold">{t.message}</span>
           </div>
         ))}
@@ -208,43 +170,35 @@ const App: React.FC = () => {
             <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><TrendingUp className="w-5 h-5" /><span className="font-medium">Dashboard</span></button>
             <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List className="w-5 h-5" /><span className="font-medium">Vendite</span></button>
             <button onClick={() => setView('statement')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'statement' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><FileText className="w-5 h-5" /><span className="font-medium">Estratto Conto</span></button>
-            <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Contact2 className="w-5 h-5" /><span className="font-medium">Anagrafica Agenti</span></button>
-            {currentUser.role === 'admin' && (
-              <>
-                <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Users className="w-5 h-5" /><span className="font-medium">Operatori</span></button>
-                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Settings className="w-5 h-5" /><span className="font-medium">Impostazioni</span></button>
-              </>
-            )}
+            <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Contact2 className="w-5 h-5" /><span className="font-medium">Agenti</span></button>
+            <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Settings className="w-5 h-5" /><span className="font-medium">Impostazioni</span></button>
           </nav>
         </div>
         <div className="mt-auto p-6 border-t border-white/10">
-          <UserSwitcher currentUser={currentUser} operatori={operatori} onLogout={() => { setCurrentUser(null); setIsLoggedIn(false); setViewAsEmail(null); }} viewAsEmail={viewAsEmail} onViewAsChange={setViewAsEmail} />
+          <UserSwitcher currentUser={currentUser} operatori={operatori} onLogout={() => { setCurrentUser(null); setIsLoggedIn(true); }} viewAsEmail={viewAsEmail} onViewAsChange={setViewAsEmail} />
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
-          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-            {view === 'list' ? 'Registro Vendite' : view === 'dashboard' ? 'Statistiche' : view === 'agents' ? 'Team Agenti' : view === 'statement' ? 'Estratto Conto' : view === 'settings' ? 'Configurazione' : 'Operatori'}
-          </h2>
-          {view === 'list' && <button onClick={() => { setEditingVendita(null); setIsFormOpen(true); }} className="bg-[#32964D] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold shadow-lg hover:bg-[#2b7e41] transition-all"><Plus className="w-5 h-5" /> Nuova Vendita</button>}
+          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view.toUpperCase()}</h2>
         </header>
 
         <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
           <div className="max-w-7xl mx-auto">
-            {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={async (id) => { const v = vendite.find(x => x.id === id); if (v) { const up = {...v, incassato: true}; setVendite(vendite.map(x => x.id === id ? up : x)); await syncToCloud('vendite', up); addToast("Incasso confermato"); } }} onVerifyPayment={async (id) => { if (currentUser.role !== 'admin') return; const v = vendite.find(x => x.id === id); if (v) { const up = {...v, pagamentoVerificato: true}; setVendite(vendite.map(x => x.id === id ? up : x)); await syncToCloud('vendite', up); addToast("Pagamento verificato"); } }} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={async (id) => { if (window.confirm("Eliminare?")) { setVendite(vendite.filter(v => v.id !== id)); if (supabase) await supabase.from('vendite').delete().eq('id', id); } }} onUpdateNotizie={async (id, n, nn, m) => { const v = vendite.find(x => x.id === id); if (v) { const up = {...v, notizie: n, nuove_notizie: nn, ultimo_mittente: m}; setVendite(vendite.map(x => x.id === id ? up : x)); await syncToCloud('vendite', up); } }} currentUserNome={currentUser.nome} />}
+            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={saveEmailConfig} />}
+            {view === 'statement' && emailConfig && <StatementOfAccount agenti={agenti} vendite={filteredVendite} metodiDisponibili={metodiPagamento} emailConfig={emailConfig} />}
+            {/* ... altri componenti ... */}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
-            {view === 'statement' && <StatementOfAccount agenti={agenti} vendite={filteredVendite} metodiDisponibili={metodiPagamento} />}
-            {view === 'agents' && <AgentManager agenti={agenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} currentUser={currentUser} onUpdate={async (a) => { setAgenti(agenti.find(x => x.id === a.id) ? agenti.map(x => x.id === a.id ? a : x) : [a, ...agenti]); await syncToCloud('agenti', a); }} onDelete={async (id) => { if (window.confirm("Eliminare?")) { setAgenti(agenti.filter(a => a.id !== id)); if (supabase) await supabase.from('agenti').delete().eq('id', id); } }} />}
-            {view === 'operators' && <OperatorManager operatori={operatori} onUpdate={async (o) => { setOperatori(ensureAdmin(operatori.find(x => x.id === o.id) ? operatori.map(x => x.id === o.id ? o : x) : [...operatori, o])); await syncToCloud('operatori', o); }} onDelete={async (id) => { setOperatori(ensureAdmin(operatori.filter(o => o.id !== id))); if (supabase) await supabase.from('operatori').delete().eq('id', id); }} />}
-            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} />}
+            {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} onVerifyPayment={(id) => syncToCloud('vendite', {id, pagamentoVerificato: true})} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={(id) => supabase?.from('vendite').delete().eq('id', id).then(() => fetchData(true))} currentUserNome={currentUser.nome} />}
+            {view === 'agents' && <AgentManager agenti={agenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} currentUser={currentUser} onUpdate={(a) => syncToCloud('agenti', a)} onDelete={(id) => supabase?.from('agenti').delete().eq('id', id).then(() => fetchData(true))} />}
           </div>
         </section>
       </main>
 
       {isFormOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 no-print">
-          <SalesForm onClose={() => setIsFormOpen(false)} onSubmit={async (d) => { const email = (viewAsEmail || currentUser.email).toLowerCase(); const newV = editingVendita ? { ...editingVendita, ...d } : { ...d, id: Math.random().toString(36).substr(2, 9), data: new Date().toISOString().split('T')[0], operatoreEmail: email, created_at: new Date().toISOString() }; setVendite(editingVendita ? vendite.map(v => v.id === editingVendita.id ? newV : v) : [newV, ...vendite]); setIsFormOpen(false); await syncToCloud('vendite', newV); addToast(editingVendita ? "Aggiornato" : "Registrato"); }} userEmail={viewAsEmail || currentUser.email} availableAgentList={agenti.filter(a => (a.operatoreEmail || '').toLowerCase() === (viewAsEmail || currentUser.email).toLowerCase() || currentUser.role === 'admin')} metodiDisponibili={metodiPagamento} initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'} />
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <SalesForm onClose={() => setIsFormOpen(false)} onSubmit={(d) => syncToCloud('vendite', {...d, id: editingVendita?.id || Math.random().toString(36).substr(2, 9), operatoreEmail: currentUser.email}).then(() => setIsFormOpen(false))} userEmail={currentUser.email} availableAgentList={agenti} metodiDisponibili={metodiPagamento} initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'} />
         </div>
       )}
     </div>
