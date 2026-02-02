@@ -93,13 +93,8 @@ const App: React.FC = () => {
         supabase.from('operatori').select('*')
       ]);
 
-      if (vRes.data && vRes.data.length === 0 && vendite.length > 5) {
-        setDataLossWarning(true);
-        setIsSyncing(false);
-        return; 
-      }
-
-      if (vRes.data) {
+      // PROTEZIONE ANTI-CANCELLAZIONE: Se il cloud risponde 0 ma noi abbiamo dati, NON sovrascrivere il locale
+      if (vRes.data && vRes.data.length > 0) {
         const mappedVendite = vRes.data.map(d => ({ 
           ...d, 
           importo: Number(d.importo), 
@@ -111,15 +106,18 @@ const App: React.FC = () => {
         }));
         setVendite(mappedVendite);
         localStorage.setItem('sm_vendite', JSON.stringify(mappedVendite));
+        setDataLossWarning(false);
+      } else if (vRes.data && vRes.data.length === 0 && vendite.length > 0) {
+        setDataLossWarning(true);
       }
       
-      if (aRes.data) {
+      if (aRes.data && aRes.data.length > 0) {
         const mappedAgenti = aRes.data.map(d => ({ ...d, operatoreEmail: (d.operatore_email || '').toLowerCase() }));
         setAgenti(mappedAgenti);
         localStorage.setItem('sm_agenti', JSON.stringify(mappedAgenti));
       }
 
-      if (oRes.data) {
+      if (oRes.data && oRes.data.length > 0) {
         setOperatori(oRes.data as Operatore[]);
         localStorage.setItem('sm_operatori', JSON.stringify(oRes.data));
       }
@@ -130,7 +128,7 @@ const App: React.FC = () => {
         else setEmailConfig({ operatore_email: currentUser.email.toLowerCase(), provider: 'local', from_name: currentUser.nome });
       }
     } catch (e) { 
-      console.error(e); 
+      console.error("Errore Sincronizzazione:", e); 
     } finally { 
       setIsSyncing(false); 
     }
@@ -174,8 +172,8 @@ const App: React.FC = () => {
             localStorage.setItem('sm_vendite', JSON.stringify(json.vendite));
             localStorage.setItem('sm_agenti', JSON.stringify(json.agenti));
             localStorage.setItem('sm_operatori', JSON.stringify(json.operatori));
-            addToast("Dati caricati dal file con successo! Ora clicca 'Ripristina Cloud'.", "success");
-            setDataLossWarning(true); // Riattiviamo il banner per forzare il push su Cloud
+            addToast("Dati ricaricati con successo!", "success");
+            setDataLossWarning(true); 
           }
         } else {
           addToast("Formato file non valido", "error");
@@ -189,43 +187,67 @@ const App: React.FC = () => {
 
   const forcePushLocalToCloud = async () => {
     if (!supabase) return;
-    if (!window.confirm("Attenzione: i dati su questo PC verranno caricati sul database Cloud. Confermi?")) return;
+    if (!window.confirm("Attenzione: i dati caricati dal file verranno ora inviati al database online. Confermi?")) return;
     
     setIsSyncing(true);
     try {
+      // 1. Ripristina Operatori
       if (operatori.length > 0) {
-        await supabase.from('operatori').upsert(operatori);
+        const { error: oErr } = await supabase.from('operatori').upsert(operatori);
+        if (oErr) {
+          console.error("Errore push Operatori:", oErr);
+          throw new Error("Errore durante il caricamento degli Operatori. Verifica che la tabella esista.");
+        }
       }
       
+      // 2. Ripristina Agenti
       if (agenti.length > 0) {
-        const mappedAgenti = agenti.map(a => ({ ...a, operatore_email: a.operatoreEmail }));
-        await supabase.from('agenti').upsert(mappedAgenti);
+        const mappedAgenti = agenti.map(a => ({ 
+          id: a.id,
+          nome: a.nome,
+          email: a.email,
+          operatore_email: (a.operatoreEmail || '').toLowerCase(),
+          telefono: a.telefono,
+          zona: a.zona
+        }));
+        const { error: aErr } = await supabase.from('agenti').upsert(mappedAgenti);
+        if (aErr) {
+          console.error("Errore push Agenti:", aErr);
+          throw new Error("Errore durante il caricamento degli Agenti.");
+        }
       }
       
+      // 3. Ripristina Vendite
       if (vendite.length > 0) {
         const mappedVendite = vendite.map(v => ({
-          ...v,
+          id: v.id,
+          data: v.data,
+          cliente: v.cliente,
+          importo: v.importo,
           metodo_pagamento: v.metodoPagamento,
-          operatore_email: v.operatoreEmail,
-          note_amministrazione: v.noteAmministrazione,
+          sconto: v.sconto,
+          agente: v.agente,
+          operatore_email: (v.operatoreEmail || '').toLowerCase(),
+          incassato: v.incassato,
           verificare_pagamento: v.verificarePagamento,
-          pagamento_verificato: v.pagamentoVerificato
+          pagamento_verificato: v.pagamentoVerificato,
+          note_amministrazione: v.noteAmministrazione,
+          notizie: v.notizie,
+          nuove_notizie: v.nuove_notizie,
+          ultimo_mittente: v.ultimo_mittente,
+          created_at: v.created_at
         }));
-        mappedVendite.forEach(v => {
-          delete (v as any).metodoPagamento;
-          delete (v as any).operatoreEmail;
-          delete (v as any).noteAmministrazione;
-          delete (v as any).verificarePagamento;
-          delete (v as any).pagamentoVerificato;
-        });
-        await supabase.from('vendite').upsert(mappedVendite);
+        const { error: vErr } = await supabase.from('vendite').upsert(mappedVendite);
+        if (vErr) throw vErr;
       }
+      
       setDataLossWarning(false);
-      addToast("Cloud ripristinato con successo!");
-      fetchData(true);
-    } catch (e) {
+      addToast("Cloud ripristinato con successo!", "success");
+      // NON chiamiamo fetchData immediatamente per evitare race conditions, aspettiamo 1 secondo
+      setTimeout(() => fetchData(true), 1500);
+    } catch (e: any) {
       console.error(e);
-      addToast("Errore durante il caricamento", "error");
+      addToast(e.message || "Errore durante il caricamento sul Cloud", "error");
     } finally {
       setIsSyncing(false);
     }
@@ -289,16 +311,16 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4">
               <div className="bg-white/20 p-2 rounded-xl"><ShieldAlert className="w-6 h-6 animate-pulse" /></div>
               <div>
-                <p className="font-black uppercase tracking-tighter text-lg">MODALITÀ RECUPERO ATTIVA</p>
-                <p className="text-xs font-bold opacity-80 uppercase tracking-widest">Sincronizzazione Cloud in pausa per proteggere i tuoi dati locali.</p>
+                <p className="font-black uppercase tracking-tighter text-lg">DATI CARICATI DA FILE (OFFLINE)</p>
+                <p className="text-xs font-bold opacity-80 uppercase tracking-widest">I nomi sono visibili. Clicca il tasto bordeaux per salvarli online definitivamente.</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <label className="bg-white text-rose-600 px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-100 transition-all cursor-pointer">
-                <FileJson className="w-4 h-4" /> Carica Backup (.json)
+              <label className="bg-white text-rose-600 px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-slate-100 transition-all cursor-pointer shadow-sm">
+                <FileJson className="w-4 h-4" /> Carica un altro File
                 <input type="file" accept=".json" onChange={importData} className="hidden" />
               </label>
-              <button onClick={forcePushLocalToCloud} className="bg-rose-900 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-rose-950 transition-all shadow-lg"><Upload className="w-4 h-4" /> Ripristina Cloud da qui</button>
+              <button onClick={forcePushLocalToCloud} className="bg-rose-900 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-rose-950 transition-all shadow-lg border border-rose-800"><Upload className="w-4 h-4" /> SALVA DATI SU CLOUD</button>
             </div>
           </div>
         </div>
