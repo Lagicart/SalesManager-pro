@@ -82,10 +82,9 @@ const App: React.FC = () => {
   const fetchData = useCallback(async (force = false) => {
     if (!supabase) return;
     
-    // PROTEZIONE CRITICA: Se c'è un avviso di "dati locali da salvare", 
-    // NON scarichiamo nulla dal cloud per evitare di sovrascrivere il locale.
+    // Se abbiamo dati locali non sincronizzati, non scarichiamo nulla per non rischiare sovrascritture
     if (!force && dataLossWarning) {
-      console.log("Fetch sospesa: Dati locali prioritari in attesa di sincronizzazione.");
+      console.warn("Fetch bloccata: Dati locali in attesa di sincronizzazione.");
       return;
     }
 
@@ -101,7 +100,7 @@ const App: React.FC = () => {
         supabase.from('operatori').select('*')
       ]);
 
-      if (vRes.data) {
+      if (vRes.data && vRes.data.length > 0) {
         const mappedVendite = vRes.data.map(d => ({ 
           ...d, 
           importo: Number(d.importo), 
@@ -115,7 +114,7 @@ const App: React.FC = () => {
         localStorage.setItem('sm_vendite', JSON.stringify(mappedVendite));
       }
       
-      if (aRes.data) {
+      if (aRes.data && aRes.data.length > 0) {
         const mappedAgenti = aRes.data.map(d => ({ 
           ...d, 
           operatoreEmail: (d.operatore_email || '').toLowerCase() 
@@ -124,7 +123,7 @@ const App: React.FC = () => {
         localStorage.setItem('sm_agenti', JSON.stringify(mappedAgenti));
       }
 
-      if (oRes.data) {
+      if (oRes.data && oRes.data.length > 0) {
         setOperatori(oRes.data as Operatore[]);
         localStorage.setItem('sm_operatori', JSON.stringify(oRes.data));
       }
@@ -134,7 +133,7 @@ const App: React.FC = () => {
         if (eData) setEmailConfig(eData);
       }
     } catch (e) { 
-      console.error("Errore Sincronizzazione:", e); 
+      console.error("Errore Fetch:", e); 
     } finally { 
       setIsSyncing(false); 
     }
@@ -142,7 +141,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (supabase && isLoggedIn && currentUser) {
-      fetchData(true);
+      fetchData(false);
     }
   }, [supabase, isLoggedIn, currentUser]);
 
@@ -160,7 +159,7 @@ const App: React.FC = () => {
     link.href = url;
     link.download = `LAGICART_BACKUP_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
-    addToast("Backup salvato correttamente");
+    addToast("Backup locale scaricato.");
     return true;
   };
 
@@ -172,81 +171,93 @@ const App: React.FC = () => {
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        if (json.vendite && json.agenti) {
-          setVendite(json.vendite);
-          setAgenti(json.agenti);
+        if (json.vendite || json.agenti) {
+          if (json.vendite) setVendite(json.vendite);
+          if (json.agenti) setAgenti(json.agenti);
           if (json.operatori) setOperatori(json.operatori);
           if (json.metodi) setMetodiPagamento(json.metodi);
           
-          localStorage.setItem('sm_vendite', JSON.stringify(json.vendite));
-          localStorage.setItem('sm_agenti', JSON.stringify(json.agenti));
-          localStorage.setItem('sm_operatori', JSON.stringify(json.operatori));
+          localStorage.setItem('sm_vendite', JSON.stringify(json.vendite || []));
+          localStorage.setItem('sm_agenti', JSON.stringify(json.agenti || []));
+          localStorage.setItem('sm_operatori', JSON.stringify(json.operatori || []));
           localStorage.setItem('sm_needs_sync', 'true');
           
           setDataLossWarning(true);
-          addToast("Dati ricaricati dal file. Ora premi SINCRONIZZA CLOUD.", "info");
+          addToast("Dati importati nel PC. Premi SINCRONIZZA ORA per il Cloud.", "info");
         }
       } catch (err) {
-        addToast("Errore lettura file", "error");
+        addToast("File non valido.", "error");
       }
     };
     reader.readAsText(file);
   };
 
   const forcePushLocalToCloud = async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      alert("Database non collegato nelle Impostazioni!");
+      return;
+    }
+    
     setIsSyncing(true);
     try {
-      // 1. Pulizia e Mapping rigoroso per evitare errori di schema
-      const mappedVendite = vendite.map(v => ({
-        id: v.id,
-        data: v.data,
-        cliente: v.cliente,
-        importo: v.importo,
-        metodo_pagamento: v.metodoPagamento,
-        sconto: v.sconto || '',
-        agente: v.agente,
-        operatore_email: (v.operatoreEmail || '').toLowerCase(),
-        incassato: !!v.incassato,
-        verificare_pagamento: !!v.verificarePagamento,
-        pagamento_verificato: !!v.pagamentoVerificato,
-        note_amministrazione: v.noteAmministrazione || '',
-        notizie: v.notizie || '',
-        nuove_notizie: !!v.nuove_notizie,
-        ultimo_mittente: v.ultimo_mittente || '',
-        // created_at lo inviamo solo se valido, altrimenti lasciamo fare al DB
-        ...(v.created_at && v.created_at.length > 5 ? { created_at: v.created_at } : {})
-      }));
+      addToast("Inizio caricamento granulare...", "info");
 
-      const mappedAgenti = agenti.map(a => ({
-        id: a.id,
-        nome: a.nome,
-        email: a.email,
-        operatore_email: (a.operatoreEmail || '').toLowerCase(),
-        telefono: a.telefono || '',
-        zona: a.zona || ''
-      }));
+      // 1. Carica Operatori
+      if (operatori.length > 0) {
+        const { error: opErr } = await supabase.from('operatori').upsert(operatori);
+        if (opErr) throw new Error("Errore tabella Operatori: " + opErr.message);
+      }
 
-      // Esecuzione Upsert
-      const results = await Promise.all([
-        supabase.from('operatori').upsert(operatori),
-        supabase.from('agenti').upsert(mappedAgenti),
-        supabase.from('vendite').upsert(mappedVendite)
-      ]);
+      // 2. Carica Agenti
+      if (agenti.length > 0) {
+        const mappedAgenti = agenti.map(a => ({
+          id: a.id,
+          nome: a.nome,
+          email: a.email,
+          operatore_email: (a.operatoreEmail || '').toLowerCase(),
+          telefono: a.telefono || '',
+          zona: a.zona || ''
+        }));
+        const { error: agErr } = await supabase.from('agenti').upsert(mappedAgenti);
+        if (agErr) throw new Error("Errore tabella Agenti: " + agErr.message);
+      }
 
-      // Controllo errori specifici
-      const error = results.find(r => r.error);
-      if (error) throw error.error;
+      // 3. Carica Vendite
+      if (vendite.length > 0) {
+        const mappedVendite = vendite.map(v => ({
+          id: v.id,
+          data: v.data,
+          cliente: v.cliente,
+          importo: Number(v.importo),
+          metodo_pagamento: v.metodoPagamento,
+          sconto: v.sconto || '',
+          agente: v.agente,
+          operatore_email: (v.operatoreEmail || '').toLowerCase(),
+          incassato: !!v.incassato,
+          verificare_pagamento: !!v.verificarePagamento,
+          pagamento_verificato: !!v.pagamentoVerificato,
+          note_amministrazione: v.noteAmministrazione || '',
+          notizie: v.notizie || '',
+          nuove_notizie: !!v.nuove_notizie,
+          ultimo_mittente: v.ultimo_mittente || '',
+          created_at: v.created_at || new Date().toISOString()
+        }));
+
+        // Upsert a blocchi di 50 per evitare timeout
+        for (let i = 0; i < mappedVendite.length; i += 50) {
+          const chunk = mappedVendite.slice(i, i + 50);
+          const { error: vErr } = await supabase.from('vendite').upsert(chunk);
+          if (vErr) throw new Error("Errore tabella Vendite: " + vErr.message);
+        }
+      }
 
       setDataLossWarning(false);
       localStorage.setItem('sm_needs_sync', 'false');
-      addToast("SINCRONIZZAZIONE COMPLETATA!", "success");
-      
-      // Ora che siamo allineati, possiamo riprendere il fetch normale
-      setTimeout(() => fetchData(true), 1000);
+      addToast("CLOULD AGGIORNATO CON SUCCESSO!", "success");
+      fetchData(true);
     } catch (e: any) {
-      console.error("Errore Cloud:", e);
-      alert(`ERRORE DI CARICAMENTO:\n${e.message || "Verifica le tabelle del database."}`);
+      console.error("Dettaglio Errore:", e);
+      alert(`FALLIMENTO CARICAMENTO:\n${e.message}\n\nAssicurati di aver eseguito lo script SQL in Supabase.`);
     } finally {
       setIsSyncing(false);
     }
@@ -272,7 +283,9 @@ const App: React.FC = () => {
       if (error) throw error;
       fetchData(false);
     } catch (e) { 
-      addToast("Errore aggiornamento record", "error"); 
+      addToast("Errore Cloud, dati salvati solo in locale.", "error"); 
+      setDataLossWarning(true);
+      localStorage.setItem('sm_needs_sync', 'true');
     }
   };
 
@@ -281,7 +294,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     try {
       await supabase.from('configurazioni_email').upsert(config);
-      addToast("Impostazioni email salvate");
+      addToast("Configurazione Email salvata.");
     } catch (e) { console.error(e); }
   };
 
@@ -289,9 +302,9 @@ const App: React.FC = () => {
     if (!currentUser) return [];
     let list = [...vendite];
     if (currentUser.role === 'admin' && viewAsEmail) {
-      list = list.filter(v => v.operatoreEmail.toLowerCase() === viewAsEmail.toLowerCase());
+      list = list.filter(v => (v.operatoreEmail || '').toLowerCase() === viewAsEmail.toLowerCase());
     } else if (currentUser.role !== 'admin') {
-      list = list.filter(v => v.operatoreEmail.toLowerCase() === currentUser.email.toLowerCase());
+      list = list.filter(v => (v.operatoreEmail || '').toLowerCase() === currentUser.email.toLowerCase());
     }
     return list;
   }, [vendite, currentUser, viewAsEmail]);
@@ -307,12 +320,12 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4">
               <div className="bg-white/10 p-2 rounded-xl border border-white/20"><ShieldCheck className="w-6 h-6 text-emerald-400" /></div>
               <div>
-                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI DA SINCRONIZZARE</p>
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Hai caricato dei dati che non sono ancora sul Cloud.</p>
+                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI DA TRASFERIRE</p>
+                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Stai lavorando su dati salvati solo su questo PC.</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={exportData} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border border-white/20 transition-all"><Download className="w-3 h-3" /> Backup</button>
+              <button onClick={exportData} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/20"><Download className="w-3 h-3" /> Backup</button>
               <button onClick={forcePushLocalToCloud} className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg border border-emerald-500">
                 {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} SINCRONIZZA ORA
               </button>
@@ -353,7 +366,7 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view.toUpperCase()}</h2>
           <div className="flex items-center gap-4">
-            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> SINCRONIZZAZIONE...</div>}
+            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> AGGIORNAMENTO...</div>}
             <button onClick={() => setIsFormOpen(true)} className="bg-[#32964D] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all"><Plus className="w-4 h-4" /> Nuova Pratica</button>
           </div>
         </header>
