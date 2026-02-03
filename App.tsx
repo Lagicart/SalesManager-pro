@@ -77,7 +77,8 @@ const App: React.FC = () => {
           metodoPagamento: d.metodo_pagamento, 
           operatoreEmail: (d.operatore_email || '').toLowerCase(),
           verificarePagamento: d.verificare_pagamento,
-          pagamentoVerificato: d.pagamento_verificato
+          pagamentoVerificato: d.pagamento_verificato,
+          noteAmministrazione: d.note_amministrazione || ''
         })));
       }
       if (aRes.data) {
@@ -88,19 +89,15 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); } finally { setIsSyncing(false); }
   }, [supabase, currentUser]);
 
-  // REAL-TIME: Sottoscrizione ai cambiamenti del Cloud
   useEffect(() => {
     if (!supabase || !isLoggedIn) return;
-
     fetchData();
-
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [supabase, isLoggedIn, fetchData]);
 
@@ -108,24 +105,35 @@ const App: React.FC = () => {
     if (!supabase) return;
     setIsSyncing(true);
     try {
+      // Creiamo un payload pulito mappando camelCase -> snake_case
       const payload: any = { ...data };
+      
       if (table === 'vendite') {
-        if (data.metodoPagamento) payload.metodo_pagamento = data.metodoPagamento;
-        if (data.operatoreEmail) payload.operatore_email = data.operatoreEmail.toLowerCase();
+        if ('metodoPagamento' in data) payload.metodo_pagamento = data.metodoPagamento;
+        if ('operatoreEmail' in data) payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
+        if ('verificarePagamento' in data) payload.verificare_pagamento = !!data.verificarePagamento;
+        if ('pagamentoVerificato' in data) payload.pagamento_verificato = !!data.pagamentoVerificato;
+        if ('noteAmministrazione' in data) payload.note_amministrazione = data.noteAmministrazione;
+        
+        // Pulizia chiavi camelCase per evitare errori di schema Supabase
         delete payload.metodoPagamento;
         delete payload.operatoreEmail;
+        delete payload.verificarePagamento;
+        delete payload.pagamentoVerificato;
+        delete payload.noteAmministrazione;
       } else if (table === 'agenti') {
-        if (data.operatoreEmail) payload.operatore_email = data.operatoreEmail.toLowerCase();
+        if ('operatoreEmail' in data) payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
         delete payload.operatoreEmail;
       }
 
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
       
-      addToast("Dati salvati sul Cloud", "success");
+      addToast("Dati sincronizzati", "success");
       return true;
     } catch (e: any) {
-      addToast("Errore di connessione: " + e.message, "error");
+      console.error("Errore sincronizzazione:", e);
+      addToast("Errore database: " + e.message, "error");
       throw e;
     } finally { setIsSyncing(false); }
   };
@@ -134,22 +142,51 @@ const App: React.FC = () => {
     if (!supabase) return;
     setIsSyncing(true);
     try {
-      addToast("Sincronizzazione manuale...", "info");
+      addToast("Allineamento Cloud in corso...", "info");
+      
       // Operatori
-      await supabase.from('operatori').upsert(operatori.map(o => ({...o, email: o.email.toLowerCase()})));
+      await supabase.from('operatori').upsert(operatori.map(o => ({
+        id: o.id,
+        nome: o.nome,
+        email: o.email.toLowerCase(),
+        password: o.password,
+        role: o.role
+      })), { onConflict: 'email' });
+
       // Agenti
-      await supabase.from('agenti').upsert(agenti.map(a => ({...a, operatore_email: a.operatoreEmail.toLowerCase()})));
+      await supabase.from('agenti').upsert(agenti.map(a => ({
+        id: a.id,
+        nome: a.nome,
+        email: a.email.toLowerCase(),
+        operatore_email: (a.operatoreEmail || '').toLowerCase(),
+        telefono: a.telefono,
+        zona: a.zona
+      })));
+
       // Vendite
       const sales = vendite.map(v => ({
-        ...v,
+        id: v.id,
+        data: v.data,
+        cliente: v.cliente,
+        importo: Number(v.importo),
         metodo_pagamento: v.metodoPagamento,
-        operatore_email: v.operatoreEmail.toLowerCase(),
-        importo: Number(v.importo)
+        agente: v.agente,
+        operatore_email: (v.operatoreEmail || '').toLowerCase(),
+        incassato: !!v.incassato,
+        verificare_pagamento: !!v.verificarePagamento,
+        pagamento_verificato: !!v.pagamentoVerificato,
+        note_amministrazione: v.noteAmministrazione || '',
+        notizie: v.notizie || '',
+        nuove_notizie: !!v.nuove_notizie,
+        ultimo_mittente: v.ultimo_mittente || '',
+        created_at: v.created_at || new Date().toISOString()
       }));
+
       for (let i = 0; i < sales.length; i += 50) {
         await supabase.from('vendite').upsert(sales.slice(i, i + 50));
       }
-      addToast("Sincronizzazione completata!", "success");
+
+      addToast("Cloud allineato con successo!", "success");
       fetchData();
     } catch (e: any) { addToast("Errore: " + e.message, "error"); }
     finally { setIsSyncing(false); }
@@ -174,7 +211,7 @@ const App: React.FC = () => {
         const data = JSON.parse(event.target?.result as string);
         if (data.vendite) setVendite(data.vendite);
         if (data.agenti) setAgenti(data.agenti);
-        addToast("Dati caricati. Premi 'Sincronizza' nelle impostazioni per caricarli nel Cloud.");
+        addToast("Dati caricati nel sistema locale.");
       } catch (err) { addToast("File non valido", "error"); }
     };
     reader.readAsText(file);
