@@ -80,8 +80,6 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async (force = false) => {
     if (!supabase) return;
-    if (!force && dataLossWarning) return;
-
     setIsSyncing(true);
     try {
       const [vRes, aRes, oRes, eRes] = await Promise.all([
@@ -123,11 +121,14 @@ const App: React.FC = () => {
         setEmailConfig(eRes.data);
       }
     } catch (e) { console.error(e); } finally { setIsSyncing(false); }
-  }, [supabase, currentUser, dataLossWarning]);
+  }, [supabase, currentUser]);
 
   useEffect(() => {
     if (supabase && isLoggedIn) {
       fetchData();
+      
+      // Real-time opzionale: se volessimo proprio il top, potremmo aggiungere una subscription qui.
+      // Per ora rinfreschiamo ad ogni azione di scrittura.
     }
   }, [supabase, isLoggedIn, fetchData]);
 
@@ -135,85 +136,89 @@ const App: React.FC = () => {
     if (!supabase) return;
     setIsSyncing(true);
     try {
-      addToast("Riparazione Cloud in corso...", "info");
+      addToast("Sincronizzazione globale in corso...", "info");
+      
+      // Upsert Operatori
+      const ops = operatori.map(o => ({ ...o, email: o.email.toLowerCase() }));
+      await supabase.from('operatori').upsert(ops, { onConflict: 'email' });
 
-      // LOGICA DI DEDUPLICAZIONE OPERATORI (Email come chiave unica)
-      const opsMap = new Map();
-      operatori.forEach(op => {
-        const email = (op.email || '').toLowerCase().trim();
-        if (email) {
-          let finalId = op.id;
-          if (finalId === 'op-admin' && email !== 'admin@example.com') {
-            finalId = 'op-' + email.split('@')[0].replace(/[^a-z0-9]/g, '');
-          }
-          opsMap.set(email, {
-            id: finalId,
-            nome: op.nome,
-            email: email,
-            password: op.password || '123',
-            role: op.role || 'agent'
-          });
-        }
-      });
-      const finalOps = Array.from(opsMap.values());
-      const { error: opErr } = await supabase.from('operatori').upsert(finalOps, { onConflict: 'email' });
-      if (opErr) throw opErr;
-
-      // AGENTI
-      const finalAgents = agenti.map(a => ({
-        id: a.id || Math.random().toString(36).substr(2, 9),
+      // Upsert Agenti
+      const ags = agenti.map(a => ({
+        id: a.id,
         nome: a.nome,
-        email: (a.email || '').toLowerCase(),
-        operatore_email: (a.operatoreEmail || '').toLowerCase(),
+        email: a.email.toLowerCase(),
+        operatore_email: a.operatoreEmail.toLowerCase(),
         telefono: a.telefono || '',
         zona: a.zona || ''
       }));
-      await supabase.from('agenti').upsert(finalAgents);
+      await supabase.from('agenti').upsert(ags);
 
-      // VENDITE
-      const finalSales = vendite.map(v => ({
-        id: v.id || Math.random().toString(36).substr(2, 9),
+      // Upsert Vendite
+      const sales = vendite.map(v => ({
+        id: v.id,
         data: v.data,
         cliente: v.cliente,
-        importo: Number(v.importo),
+        importo: v.importo,
         metodo_pagamento: v.metodoPagamento,
         agente: v.agente,
-        operatore_email: (v.operatoreEmail || '').toLowerCase(),
-        incassato: !!v.incassato,
-        verificare_pagamento: !!v.verificarePagamento,
-        pagamento_verificato: !!v.pagamentoVerificato,
+        operatore_email: v.operatoreEmail.toLowerCase(),
+        incassato: v.incassato,
+        verificare_pagamento: v.verificarePagamento,
+        pagamento_verificato: v.pagamentoVerificato,
+        notizie: v.notizie || '',
+        nuove_notizie: !!v.nuove_notizie,
+        ultimo_mittente: v.ultimo_mittente || '',
         created_at: v.created_at || new Date().toISOString()
       }));
-      
-      for (let i = 0; i < finalSales.length; i += 50) {
-        await supabase.from('vendite').upsert(finalSales.slice(i, i + 50));
+
+      for (let i = 0; i < sales.length; i += 50) {
+        await supabase.from('vendite').upsert(sales.slice(i, i + 50));
       }
 
       setDataLossWarning(false);
       localStorage.setItem('sm_needs_sync', 'false');
-      addToast("Cloud riparato con successo!", "success");
+      addToast("Cloud allineato con successo!", "success");
       fetchData(true);
     } catch (e: any) {
-      addToast("Errore: " + e.message, "error");
+      addToast("Errore durante la sincronizzazione: " + e.message, "error");
     } finally { setIsSyncing(false); }
   };
 
+  // LOGICA CLOUD-FIRST: Scrive prima sul Cloud, poi aggiorna il locale
   const syncToCloud = async (table: string, data: any) => {
-    if (!supabase) return;
+    if (!supabase) {
+      addToast("Errore: Database Cloud non collegato!", "error");
+      return;
+    }
+
     try {
+      setIsSyncing(true);
       const payload: any = { ...data };
+      
       if (table === 'vendite') {
         if (data.metodoPagamento) payload.metodo_pagamento = data.metodoPagamento;
         if (data.operatoreEmail) payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
         delete payload.metodoPagamento;
         delete payload.operatoreEmail;
+      } else if (table === 'agenti') {
+        if (data.operatoreEmail) payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
+        delete payload.operatoreEmail;
       }
+
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
-      fetchData(false);
-    } catch (e) { 
-      setDataLossWarning(true);
-      localStorage.setItem('sm_needs_sync', 'true');
+
+      // DOPO IL SUCCESSO SUL CLOUD, AGGIORNIAMO IL LOCALE
+      addToast("Salvato correttamente sul Cloud", "success");
+      await fetchData(true); // Forza il ricaricamento per vedere le modifiche
+      
+      return true;
+    } catch (e: any) {
+      console.error(e);
+      addToast("ERRORE CLOUD: " + e.message + ". Riprova tra poco.", "error");
+      throw e; // Rilanciamo l'errore per il form
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -221,12 +226,9 @@ const App: React.FC = () => {
     setEmailConfig(config);
     if (supabase) {
       try {
-        const { error } = await supabase.from('configurazioni_email').upsert(config, { onConflict: 'operatore_email' });
-        if (error) throw error;
+        await supabase.from('configurazioni_email').upsert(config, { onConflict: 'operatore_email' });
         addToast("Configurazione email salvata.");
-      } catch (e) {
-        addToast("Errore salvataggio email config", "error");
-      }
+      } catch (e) { addToast("Errore salvataggio email config", "error"); }
     }
   };
 
@@ -237,36 +239,12 @@ const App: React.FC = () => {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
-        const seenIds = new Set();
-        const sanitize = (list: any[]) => {
-          return (list || []).map(item => {
-            const newItem = { ...item };
-            if (!newItem.id || seenIds.has(newItem.id)) {
-              newItem.id = Math.random().toString(36).substr(2, 9);
-            }
-            seenIds.add(newItem.id);
-            return newItem;
-          });
-        };
-
         if (data.vendite) setVendite(data.vendite);
-        if (data.agenti) setAgenti(sanitize(data.agenti));
-        if (data.operatori) {
-           const opMap = new Map();
-           data.operatori.forEach((o: any) => {
-             let finalId = o.id;
-             if (finalId === 'op-admin' && o.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-               finalId = 'op-' + o.email.split('@')[0].replace(/[^a-z0-9]/g, '');
-             }
-             opMap.set(o.email.toLowerCase(), { ...o, id: finalId });
-           });
-           setOperatori(Array.from(opMap.values()));
-        }
-        if (data.metodi) setMetodiPagamento(data.metodi);
-
+        if (data.agenti) setAgenti(data.agenti);
+        if (data.operatori) setOperatori(data.operatori);
         setDataLossWarning(true);
         localStorage.setItem('sm_needs_sync', 'true');
-        addToast("Dati importati e conflitti ID risolti. Premi 'Sincronizza' per aggiornare il cloud.");
+        addToast("Dati caricati nel sistema locale. Ora premi il banner in alto per inviarli al Cloud.");
       } catch (err) { addToast("File JSON non valido", "error"); }
     };
     reader.readAsText(file);
@@ -308,12 +286,12 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <ShieldCheck className="w-8 h-8 text-emerald-400" />
             <div>
-              <p className="font-black uppercase tracking-tighter text-lg leading-none">RIPARAZIONE DATABASE DISPONIBILE</p>
-              <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Premi il tasto a destra per allineare il Cloud ai dati che hai appena caricato.</p>
+              <p className="font-black uppercase tracking-tighter text-lg leading-none">ALLINEAMENTO CLOUD RICHIESTO</p>
+              <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Sono stati rilevati nuovi dati locali. Sincronizza ora per renderli visibili a tutti.</p>
             </div>
           </div>
           <button onClick={forcePushLocalToCloud} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg border-2 border-emerald-400">
-            {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-5 h-5" />} SINCRONIZZA E RIPARA CLOUD
+            {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-5 h-5" />} SINCRONIZZA ORA
           </button>
         </div>
       )}
@@ -353,7 +331,7 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view.toUpperCase()}</h2>
           <div className="flex items-center gap-4">
-            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> SINCRONIZZAZIONE...</div>}
+            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> AZIONE IN CORSO...</div>}
             <button onClick={() => setIsFormOpen(true)} className="bg-[#32964D] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all"><Plus className="w-4 h-4" /> Nuova Pratica</button>
           </div>
         </header>
@@ -372,7 +350,29 @@ const App: React.FC = () => {
 
       {isFormOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <SalesForm onClose={() => { setIsFormOpen(false); setEditingVendita(null); }} onSubmit={(d) => syncToCloud('vendite', {...d, id: editingVendita?.id || Math.random().toString(36).substr(2, 9), operatoreEmail: currentUser.email}).then(() => setIsFormOpen(false))} userEmail={currentUser.email} availableAgentList={filteredAgentiForForm} metodiDisponibili={metodiPagamento} initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'} />
+          <SalesForm 
+            onClose={() => { setIsFormOpen(false); setEditingVendita(null); }} 
+            onSubmit={async (d) => {
+              try {
+                const newId = editingVendita?.id || Math.random().toString(36).substr(2, 9);
+                await syncToCloud('vendite', {
+                  ...d, 
+                  id: newId, 
+                  operatoreEmail: currentUser.email,
+                  data: d.data || new Date().toISOString().split('T')[0]
+                });
+                setIsFormOpen(false);
+                setEditingVendita(null);
+              } catch (e) {
+                // L'errore è già gestito dai toast, teniamo il form aperto per permettere il retry
+              }
+            }} 
+            userEmail={currentUser.email} 
+            availableAgentList={filteredAgentiForForm} 
+            metodiDisponibili={metodiPagamento} 
+            initialData={editingVendita || undefined} 
+            isAdmin={currentUser.role === 'admin'} 
+          />
         </div>
       )}
     </div>
