@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Trash2, CreditCard, Server, Mail, ShieldCheck, Globe, Key, User, LifeBuoy, AlertTriangle, CloudUpload, Download, FileJson } from 'lucide-react';
+import { Plus, Trash2, CreditCard, Server, Mail, ShieldCheck, Globe, Key, User, LifeBuoy, AlertTriangle, CloudUpload, Download, FileJson, ShieldAlert } from 'lucide-react';
 import { EmailConfig } from '../types';
 
 interface SettingsManagerProps {
@@ -39,113 +39,114 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ metodi, onUpdate, isA
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-24">
       
+      {/* SEZIONE SICUREZZA SEMPRE VISIBILE IN ALTO */}
+      <div className="bg-rose-50 p-8 rounded-[2.5rem] border-2 border-rose-200 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="flex flex-col md:flex-row items-center gap-6 mb-6">
+          <div className="bg-rose-600 p-4 rounded-2xl text-white shadow-lg shadow-rose-200">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <div className="text-center md:text-left">
+            <h3 className="text-xl font-black text-rose-900 uppercase tracking-tight">Strumenti di Protezione Dati</h3>
+            <p className="text-xs text-rose-700 font-bold uppercase tracking-widest opacity-70">Usa questi tasti per mettere al sicuro il tuo lavoro su questo PC</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button 
+            onClick={onEmergencyExport}
+            className="bg-white text-rose-700 border-2 border-rose-200 font-black py-5 rounded-2xl flex items-center justify-center gap-3 shadow-md hover:bg-rose-100 hover:border-rose-300 transition-all uppercase tracking-widest text-xs"
+          >
+            <Download className="w-5 h-5" /> Scarica Backup sul PC (.json)
+          </button>
+          
+          <label className="bg-rose-600 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 shadow-xl hover:bg-rose-700 transition-all uppercase tracking-widest text-xs cursor-pointer active:scale-95">
+            <FileJson className="w-5 h-5" /> Carica Backup da PC (.json)
+            <input type="file" accept=".json" onChange={onEmergencyImport} className="hidden" />
+          </label>
+        </div>
+        
+        <p className="mt-6 text-[10px] text-rose-800/50 font-black uppercase text-center tracking-[0.2em]">
+          Si consiglia di scaricare un backup ogni sera prima di chiudere
+        </p>
+      </div>
+
       {/* SEZIONE PERSONALE: CONFIGURAZIONE EMAIL */}
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="bg-emerald-50 p-2 rounded-xl"><Mail className="w-6 h-6 text-[#32964D]" /></div>
             <div>
-              <h3 className="text-xl font-bold text-slate-900">La tua Email</h3>
-              <p className="text-xs text-slate-500 font-medium">Configura i parametri per l'invio degli estratti conto.</p>
+              <h3 className="text-xl font-bold text-slate-900">Configurazione Invio Email</h3>
+              <p className="text-xs text-slate-500 font-medium">Imposta come vuoi inviare gli estratti conto ai tuoi agenti.</p>
             </div>
           </div>
-          <button onClick={setGoogleDefaults} className="text-[10px] font-black text-sky-600 bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-100 uppercase">Predefiniti Gmail</button>
+          <button onClick={setGoogleDefaults} className="text-[10px] font-black text-sky-600 bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-100 uppercase">Parametri Gmail</button>
         </div>
 
         <form onSubmit={handleSaveEmail} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <button type="button" onClick={() => setTempEmailConfig({...tempEmailConfig, provider: 'local'})} className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${tempEmailConfig.provider === 'local' ? 'border-[#32964D] bg-emerald-50 text-[#32964D]' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
-              <User className="w-5 h-5" /><span className="text-xs font-black uppercase">Client Locale</span>
+              <User className="w-5 h-5" /><span className="text-xs font-black uppercase">App Mail (Outlook/Mail)</span>
             </button>
             <button type="button" onClick={() => setTempEmailConfig({...tempEmailConfig, provider: 'smtp'})} className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${tempEmailConfig.provider === 'smtp' ? 'border-[#32964D] bg-emerald-50 text-[#32964D]' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
-              <Globe className="w-5 h-5" /><span className="text-xs font-black uppercase">Direct SMTP (Google)</span>
+              <Globe className="w-5 h-5" /><span className="text-xs font-black uppercase">Direct SMTP (Consigliato)</span>
             </button>
           </div>
 
           {tempEmailConfig.provider === 'smtp' && (
             <div className="space-y-4 pt-6 border-t border-slate-100 animate-in slide-in-from-top-2">
-              <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start gap-4 mb-4">
-                <ShieldCheck className="w-5 h-5 text-amber-600 mt-1" />
-                <p className="text-[10px] text-amber-700 leading-relaxed">Inserisci il tuo indirizzo email e la <b>"Password per le App"</b> di Google.</p>
-              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Il tuo Nome</label>
-                  <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.from_name || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, from_name: e.target.value})} placeholder="Es: Fabiana Rossi" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tuo Nome (Mittente)</label>
+                  <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.from_name || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, from_name: e.target.value})} placeholder="Es: Mario Rossi" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tua Email</label>
-                  <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.smtp_user || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, smtp_user: e.target.value})} placeholder="nome@esempio.it" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email (Username)</label>
+                  <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.smtp_user || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, smtp_user: e.target.value})} placeholder="nome@gmail.com" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password per le App</label>
                   <div className="relative">
                     <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="password" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm font-bold" value={tempEmailConfig.smtp_pass || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, smtp_pass: e.target.value})} placeholder="xxxx xxxx xxxx xxxx" />
+                    <input type="password" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm font-bold" value={tempEmailConfig.smtp_pass || ''} onChange={e => setTempEmailConfig({...tempEmailConfig, smtp_pass: e.target.value})} placeholder="16 caratteri" />
                   </div>
                 </div>
                 <div className="space-y-1">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Server SMTP</label>
-                   <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempEmailConfig.smtp_server || 'smtp.gmail.com'} disabled />
+                   <input className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-400" value={tempEmailConfig.smtp_server || 'smtp.gmail.com'} disabled />
                 </div>
               </div>
             </div>
           )}
-          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl active:scale-95 transition-all">Salva mie impostazioni Email</button>
+          <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl active:scale-95 transition-all uppercase tracking-widest text-xs">Salva mie impostazioni Email</button>
         </form>
       </div>
 
       {isAdmin && (
         <>
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-            <div className="flex items-center gap-3 mb-6"><Server className="w-6 h-6 text-[#32964D]" /><h3 className="text-xl font-bold text-slate-900">Database Cloud (Solo Admin)</h3></div>
+            <div className="flex items-center gap-3 mb-6"><Server className="w-6 h-6 text-[#32964D]" /><h3 className="text-xl font-bold text-slate-900">Database Cloud Aziendale</h3></div>
             <div className="space-y-4">
               <input className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempUrl} onChange={e => setTempUrl(e.target.value)} placeholder="Supabase URL" />
               <input type="password" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold" value={tempKey} onChange={e => setTempKey(e.target.value)} placeholder="API Key" />
-              <button onClick={() => onDbConfigChange({url: tempUrl, key: tempKey})} className="w-full bg-[#32964D] text-white py-4 rounded-xl font-bold">Salva Connessione Cloud Aziendale</button>
+              <button onClick={() => onDbConfigChange({url: tempUrl, key: tempKey})} className="w-full bg-[#32964D] text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs">Collega l'ufficio al Cloud</button>
             </div>
           </div>
 
-          <div className="bg-rose-50 p-8 rounded-3xl border border-rose-200 shadow-lg animate-in zoom-in-95">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="bg-rose-100 p-3 rounded-2xl text-rose-600"><LifeBuoy className="w-8 h-8" /></div>
-              <div>
-                <h3 className="text-xl font-black text-rose-800 uppercase tracking-tight">CENTRO RECUPERO EMERGENZA</h3>
-                <p className="text-xs text-rose-600 font-bold uppercase tracking-widest">Usa per recuperare dati persi</p>
-              </div>
-            </div>
-            
-            <div className="bg-white/50 p-4 rounded-2xl border border-rose-100 mb-6 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-rose-600 mt-0.5 flex-shrink-0" />
-              <div className="text-xs text-rose-700 leading-relaxed font-medium">
-                <p className="mb-2">Se vedi i nomi spariti, usa il file backup che hai scaricato:</p>
-                <ol className="list-decimal ml-4 space-y-1">
-                  <li><b>Carica Backup</b>: Seleziona il file .json scaricato in precedenza.</li>
-                  <li><b>Ripristina Cloud</b>: Carica i dati del file sul server online.</li>
-                </ol>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button 
-                onClick={onEmergencyExport}
-                className="bg-white text-rose-600 border-2 border-rose-200 font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-sm hover:bg-rose-50 transition-all uppercase tracking-widest text-[10px]"
-              >
-                <Download className="w-4 h-4" /> Esporta Backup (.json)
-              </button>
-              
-              <label className="bg-rose-100 text-rose-800 border-2 border-rose-200 font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-sm hover:bg-rose-200 transition-all uppercase tracking-widest text-[10px] cursor-pointer">
-                <FileJson className="w-4 h-4" /> Carica Backup (.json)
-                <input type="file" accept=".json" onChange={onEmergencyImport} className="hidden" />
-              </label>
-
-              <button 
+          <div className="bg-emerald-900 p-8 rounded-3xl border border-emerald-800 shadow-xl">
+             <div className="flex items-center gap-4 mb-6 text-white">
+                <CloudUpload className="w-8 h-8 text-emerald-400" />
+                <h3 className="text-xl font-black uppercase tracking-tight">Sincronizzazione Forzata</h3>
+             </div>
+             <p className="text-emerald-100/70 text-xs font-medium mb-6 leading-relaxed">
+                Usa questo pulsante solo se sei sicuro che i dati che vedi su questo PC siano quelli corretti e vuoi "sovrascrivere" il cloud per tutti gli altri utenti.
+             </p>
+             <button 
                 onClick={onEmergencyPush}
-                className="bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all uppercase tracking-widest text-[10px]"
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-3 shadow-2xl transition-all uppercase tracking-widest text-xs"
               >
-                <CloudUpload className="w-4 h-4" /> Ripristina Cloud da qui
+                Invia dati di questo PC al Cloud
               </button>
-            </div>
           </div>
         </>
       )}
