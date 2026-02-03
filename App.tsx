@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Vendita, Operatore, Agente, ADMIN_EMAIL, EmailConfig } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, FileText, CheckCircle2, AlertTriangle, RefreshCw, Upload, Download, ShieldCheck } from 'lucide-react';
+import { Vendita, Operatore, Agente, EmailConfig } from './types';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, FileText, CheckCircle2, AlertTriangle, RefreshCw, Download, FileJson, ShieldCheck } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -22,7 +22,6 @@ interface Toast {
 }
 
 const App: React.FC = () => {
-  // CONFIGURAZIONE DB
   const [dbConfig, setDbConfig] = useState<{url: string, key: string} | null>(() => {
     const saved = localStorage.getItem('sm_db_config');
     return saved ? JSON.parse(saved) : null;
@@ -32,16 +31,21 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // STATO LOGIN (Persistente)
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('sm_is_logged_in') === 'true');
   const [currentUser, setCurrentUser] = useState<Operatore | null>(() => {
     const saved = localStorage.getItem('sm_current_user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  // DATI APPLICATIVI
-  const [vendite, setVendite] = useState<Vendita[]>([]);
-  const [agenti, setAgenti] = useState<Agente[]>([]);
+  // SICUREZZA: Caricamento iniziale da Local Storage (Snapshot) per evitare schermi vuoti
+  const [vendite, setVendite] = useState<Vendita[]>(() => {
+    const saved = localStorage.getItem('emergency_snapshot_vendite');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [agenti, setAgenti] = useState<Agente[]>(() => {
+    const saved = localStorage.getItem('emergency_snapshot_agenti');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [operatori, setOperatori] = useState<Operatore[]>([]);
   const [emailConfig, setEmailConfig] = useState<EmailConfig | null>(null);
   const [metodiPagamento, setMetodiPagamento] = useState<string[]>(['Bonifico', 'Rimessa Diretta', 'Assegno', 'Contanti', 'POS']);
@@ -51,21 +55,18 @@ const App: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
 
-  // Inizializza Supabase
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
       setSupabase(createClient(dbConfig.url, dbConfig.key));
     }
   }, [dbConfig]);
 
-  // Funzione Toast
   const addToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   };
 
-  // FETCH DATI (Mappatura da DB a Codice)
   const fetchData = useCallback(async () => {
     if (!supabase) return;
     setIsSyncing(true);
@@ -78,7 +79,7 @@ const App: React.FC = () => {
       ]);
 
       if (vRes.data) {
-        setVendite(vRes.data.map(d => ({ 
+        const mapped = vRes.data.map(d => ({ 
           ...d, 
           importo: Number(d.importo), 
           metodoPagamento: d.metodo_pagamento, 
@@ -86,45 +87,31 @@ const App: React.FC = () => {
           verificarePagamento: d.verificare_pagamento,
           pagamentoVerificato: d.pagamento_verificato,
           noteAmministrazione: d.note_amministrazione || ''
-        })));
+        }));
+        setVendite(mapped);
+        localStorage.setItem('emergency_snapshot_vendite', JSON.stringify(mapped));
       }
       if (aRes.data) {
-        setAgenti(aRes.data.map(d => ({ 
-          ...d, 
-          operatoreEmail: (d.operatore_email || '').toLowerCase() 
-        })));
+        const mappedA = aRes.data.map(d => ({ ...d, operatoreEmail: (d.operatore_email || '').toLowerCase() }));
+        setAgenti(mappedA);
+        localStorage.setItem('emergency_snapshot_agenti', JSON.stringify(mappedA));
       }
       if (oRes.data) setOperatori(oRes.data);
       if (eRes.data) setEmailConfig(eRes.data);
-    } catch (e) { 
+    } catch (e: any) { 
       console.error(e);
-      addToast("Errore durante il caricamento dati", "error");
+      addToast("Problema Cloud: uso dati salvati sul PC", "error");
     } finally { setIsSyncing(false); }
   }, [supabase, currentUser]);
 
-  // REALTIME E PERSISTENZA LOGIN
   useEffect(() => {
     if (isLoggedIn && currentUser) {
       localStorage.setItem('sm_is_logged_in', 'true');
       localStorage.setItem('sm_current_user', JSON.stringify(currentUser));
-    }
-    
-    if (supabase && isLoggedIn) {
       fetchData();
-      
-      // Iscrizione Realtime per aggiornamenti istantanei tra client
-      const channel = supabase
-        .channel('db-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'vendite' }, () => fetchData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'agenti' }, () => fetchData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'operatori' }, () => fetchData())
-        .subscribe();
-
-      return () => { supabase.removeChannel(channel); };
     }
   }, [supabase, isLoggedIn, currentUser, fetchData]);
 
-  // MAPPATURA DA CODICE A DB (Risolve errore colonne)
   const mapVenditaToDb = (v: any) => ({
     id: v.id,
     data: v.data,
@@ -144,35 +131,85 @@ const App: React.FC = () => {
     created_at: v.created_at || new Date().toISOString()
   });
 
-  // SALVATAGGIO CLOUD-FIRST
   const syncToCloud = async (table: string, data: any) => {
-    if (!supabase) {
-      addToast("Database non collegato", "error");
-      return;
-    }
+    if (!supabase) return;
     setIsSyncing(true);
     try {
       let payload = data;
-      if (table === 'vendite') {
-        payload = mapVenditaToDb(data);
-      } else if (table === 'agenti') {
+      if (table === 'vendite') payload = mapVenditaToDb(data);
+      else if (table === 'agenti') {
         payload = { ...data, operatore_email: (data.operatoreEmail || '').toLowerCase() };
         delete payload.operatoreEmail;
-      } else if (table === 'operatori') {
-        payload = { ...data, email: data.email.toLowerCase() };
       }
 
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
-
-      addToast("Dati salvati correttamente", "success");
-      await fetchData(); // Forza aggiornamento immediato dopo salvataggio
+      
+      addToast("Modifica salvata sul Cloud", "success");
+      await fetchData();
       return true;
     } catch (e: any) {
-      console.error(e);
-      addToast("ERRORE: " + e.message, "error");
+      addToast("Errore salvataggio: " + e.message, "error");
       throw e;
     } finally { setIsSyncing(false); }
+  };
+
+  const exportData = () => {
+    try {
+      const dataToExport = { 
+        vendite, 
+        agenti, 
+        operatori,
+        emailConfig,
+        backup_info: {
+          timestamp: new Date().toISOString(),
+          label: "LAGICART_SECURITY_BACKUP"
+        }
+      };
+      
+      const jsonString = JSON.stringify(dataToExport, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      // Creazione elemento di download forzato
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `LAGICART_DATA_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Pulizia
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      addToast("Backup JSON scaricato correttamente!", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Errore durante il download del backup", "error");
+    }
+  };
+
+  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (data.vendite) {
+          setVendite(data.vendite);
+          localStorage.setItem('emergency_snapshot_vendite', JSON.stringify(data.vendite));
+        }
+        if (data.agenti) {
+          setAgenti(data.agenti);
+          localStorage.setItem('emergency_snapshot_agenti', JSON.stringify(data.agenti));
+        }
+        addToast("Dati ripristinati con successo!", "success");
+      } catch (err) { 
+        addToast("Il file caricato non è valido", "error"); 
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleLogout = () => {
@@ -200,27 +237,12 @@ const App: React.FC = () => {
   }, [agenti, currentUser]);
 
   if (!isLoggedIn || !currentUser) {
-    return (
-      <LoginScreen 
-        operatori={operatori} 
-        onLogin={(u) => { 
-          setCurrentUser(u); 
-          setIsLoggedIn(true); 
-          localStorage.setItem('sm_is_logged_in', 'true');
-          localStorage.setItem('sm_current_user', JSON.stringify(u));
-        }} 
-        onConfigChange={(cfg) => {
-          setDbConfig(cfg);
-          if (cfg) localStorage.setItem('sm_db_config', JSON.stringify(cfg));
-          else localStorage.removeItem('sm_db_config');
-        }} 
-      />
-    );
+    return <LoginScreen operatori={operatori} onLogin={(u) => { setCurrentUser(u); setIsLoggedIn(true); }} onConfigChange={setDbConfig} />;
   }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
-      {/* Toast System */}
+      {/* Toast Alert System */}
       <div className="fixed bottom-6 right-6 z-[200] space-y-3 pointer-events-none no-print">
         {toasts.map(t => (
           <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl ${t.type === 'error' ? 'bg-rose-600' : 'bg-slate-900'} text-white border border-white/10 pointer-events-auto animate-in slide-in-from-right`}>
@@ -256,29 +278,17 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view.toUpperCase()}</h2>
           <div className="flex items-center gap-4">
-            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> AZIONE IN CORSO...</div>}
+            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> SINCRONIZZAZIONE...</div>}
             <button onClick={() => setIsFormOpen(true)} className="bg-[#32964D] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all"><Plus className="w-4 h-4" /> Nuova Pratica</button>
           </div>
         </header>
 
         <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
           <div className="max-w-7xl mx-auto">
-            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={(c) => syncToCloud('configurazioni_email', c)} />}
+            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={(c) => syncToCloud('configurazioni_email', c)} onEmergencyExport={exportData} onEmergencyImport={importData} />}
             {view === 'statement' && <StatementOfAccount agenti={filteredAgenti} vendite={filteredVendite} metodiDisponibili={metodiPagamento} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} />}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
-            {view === 'list' && (
-              <SalesTable 
-                vendite={filteredVendite} 
-                metodiDisponibili={metodiPagamento} 
-                isAdmin={currentUser.role === 'admin'} 
-                onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} 
-                onVerifyPayment={(id) => syncToCloud('vendite', {id, pagamentoVerificato: true})} 
-                onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} 
-                onDelete={(id) => supabase?.from('vendite').delete().eq('id', id).then(() => fetchData())} 
-                onUpdateNotizie={(id, txt, neu, mit) => syncToCloud('vendite', {id, notizie: txt, nuove_notizie: neu, ultimo_mittente: mit})} 
-                currentUserNome={currentUser.nome} 
-              />
-            )}
+            {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} onVerifyPayment={(id) => syncToCloud('vendite', {id, pagamentoVerificato: true})} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={(id) => supabase?.from('vendite').delete().eq('id', id).then(() => fetchData())} onUpdateNotizie={(id, txt, neu, mit) => syncToCloud('vendite', {id, notizie: txt, nuove_notizie: neu, ultimo_mittente: mit})} currentUserNome={currentUser.nome} />}
             {view === 'agents' && <AgentManager agenti={agenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} currentUser={currentUser} onUpdate={(a) => syncToCloud('agenti', a)} onDelete={(id) => supabase?.from('agenti').delete().eq('id', id).then(() => fetchData())} />}
             {view === 'operators' && currentUser.role === 'admin' && <OperatorManager operatori={operatori} onUpdate={(op) => syncToCloud('operatori', op)} onDelete={(id) => supabase?.from('operatori').delete().eq('id', id).then(() => fetchData())} />}
           </div>
@@ -287,22 +297,14 @@ const App: React.FC = () => {
 
       {isFormOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <SalesForm 
-            onClose={() => { setIsFormOpen(false); setEditingVendita(null); }} 
-            onSubmit={async (d) => {
+          <SalesForm onClose={() => { setIsFormOpen(false); setEditingVendita(null); }} onSubmit={async (d) => {
               const newId = editingVendita?.id || Math.random().toString(36).substr(2, 9);
               try {
                 await syncToCloud('vendite', { ...d, id: newId, operatoreEmail: currentUser.email, data: d.data || new Date().toISOString().split('T')[0] });
                 setIsFormOpen(false);
                 setEditingVendita(null);
               } catch(e) {}
-            }} 
-            userEmail={currentUser.email} 
-            availableAgentList={filteredAgenti} 
-            metodiDisponibili={metodiPagamento} 
-            initialData={editingVendita || undefined} 
-            isAdmin={currentUser.role === 'admin'} 
-          />
+            }} userEmail={currentUser.email} availableAgentList={filteredAgenti} metodiDisponibili={metodiPagamento} initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'} />
         </div>
       )}
     </div>
