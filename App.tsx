@@ -142,7 +142,6 @@ const App: React.FC = () => {
       operatori.forEach(op => {
         const email = (op.email || '').toLowerCase().trim();
         if (email) {
-          // Se l'ID è 'op-admin' ma l'email non è quella dell'admin vero, generiamo un nuovo ID
           let finalId = op.id;
           if (finalId === 'op-admin' && email !== 'admin@example.com') {
             finalId = 'op-' + email.split('@')[0].replace(/[^a-z0-9]/g, '');
@@ -238,8 +237,6 @@ const App: React.FC = () => {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
-        
-        // AUTO-RIPARAZIONE ID CONFLITTUALI
         const seenIds = new Set();
         const sanitize = (list: any[]) => {
           return (list || []).map(item => {
@@ -258,7 +255,6 @@ const App: React.FC = () => {
            const opMap = new Map();
            data.operatori.forEach((o: any) => {
              let finalId = o.id;
-             // Se l'ID è op-admin ma l'email non corrisponde all'admin predefinito, correggiamo l'ID
              if (finalId === 'op-admin' && o.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
                finalId = 'op-' + o.email.split('@')[0].replace(/[^a-z0-9]/g, '');
              }
@@ -296,6 +292,12 @@ const App: React.FC = () => {
     }
     return list;
   }, [vendite, currentUser, viewAsEmail]);
+
+  const filteredAgentiForForm = useMemo(() => {
+    if (!currentUser) return [];
+    if (currentUser.role === 'admin') return agenti;
+    return agenti.filter(a => (a.operatoreEmail || '').toLowerCase() === currentUser.email.toLowerCase());
+  }, [agenti, currentUser]);
 
   if (!isLoggedIn || !currentUser) return <LoginScreen operatori={operatori} onLogin={(u) => { setCurrentUser(u); setIsLoggedIn(true); }} onConfigChange={setDbConfig} />;
 
@@ -336,6 +338,9 @@ const App: React.FC = () => {
             <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List className="w-5 h-5" /><span className="font-medium">Vendite</span></button>
             <button onClick={() => setView('statement')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'statement' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><FileText className="w-5 h-5" /><span className="font-medium">Estratto Conto</span></button>
             <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Contact2 className="w-5 h-5" /><span className="font-medium">Agenti</span></button>
+            {currentUser.role === 'admin' && (
+              <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Users className="w-5 h-5" /><span className="font-medium">Operatori</span></button>
+            )}
             <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Settings className="w-5 h-5" /><span className="font-medium">Impostazioni</span></button>
           </nav>
         </div>
@@ -356,17 +361,18 @@ const App: React.FC = () => {
         <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
           <div className="max-w-7xl mx-auto">
             {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={saveEmailConfig} onEmergencyPush={forcePushLocalToCloud} onEmergencyExport={exportData} onEmergencyImport={importData} />}
-            {view === 'statement' && <StatementOfAccount agenti={agenti} vendite={filteredVendite} metodiDisponibili={metodiPagamento} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} />}
+            {view === 'statement' && <StatementOfAccount agenti={filteredAgentiForForm} vendite={filteredVendite} metodiDisponibili={metodiPagamento} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} />}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
             {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} onVerifyPayment={(id) => syncToCloud('vendite', {id, pagamentoVerificato: true})} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={(id) => supabase?.from('vendite').delete().eq('id', id).then(() => fetchData(true))} onUpdateNotizie={(id, txt, neu, mit) => syncToCloud('vendite', {id, notizie: txt, nuove_notizie: neu, ultimo_mittente: mit})} currentUserNome={currentUser.nome} />}
             {view === 'agents' && <AgentManager agenti={agenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} currentUser={currentUser} onUpdate={(a) => syncToCloud('agenti', a)} onDelete={(id) => supabase?.from('agenti').delete().eq('id', id).then(() => fetchData(true))} />}
+            {view === 'operators' && currentUser.role === 'admin' && <OperatorManager operatori={operatori} onUpdate={(op) => syncToCloud('operatori', op)} onDelete={(id) => supabase?.from('operatori').delete().eq('id', id).then(() => fetchData(true))} onForceCloudSync={forcePushLocalToCloud} />}
           </div>
         </section>
       </main>
 
       {isFormOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <SalesForm onClose={() => { setIsFormOpen(false); setEditingVendita(null); }} onSubmit={(d) => syncToCloud('vendite', {...d, id: editingVendita?.id || Math.random().toString(36).substr(2, 9), operatoreEmail: currentUser.email}).then(() => setIsFormOpen(false))} userEmail={currentUser.email} availableAgentList={agenti} metodiDisponibili={metodiPagamento} initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'} />
+          <SalesForm onClose={() => { setIsFormOpen(false); setEditingVendita(null); }} onSubmit={(d) => syncToCloud('vendite', {...d, id: editingVendita?.id || Math.random().toString(36).substr(2, 9), operatoreEmail: currentUser.email}).then(() => setIsFormOpen(false))} userEmail={currentUser.email} availableAgentList={filteredAgentiForForm} metodiDisponibili={metodiPagamento} initialData={editingVendita || undefined} isAdmin={currentUser.role === 'admin'} />
         </div>
       )}
     </div>
