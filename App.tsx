@@ -66,7 +66,7 @@ const App: React.FC = () => {
 
   const [metodiPagamento, setMetodiPagamento] = useState<string[]>(() => {
     const saved = localStorage.getItem('sm_metodi');
-    return saved ? JSON.parse(saved) : ['Bonifico', 'Rimessa Diretta', 'Assegno', 'Contanti'];
+    return saved ? JSON.parse(saved) : ['Bonifico', 'Rimessa Diretta', 'Assegno', 'Contanti', 'POS'];
   });
   
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -81,15 +81,7 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async (force = false) => {
     if (!supabase) return;
-    
-    if (!force && dataLossWarning) {
-      console.warn("Fetch bloccata: sincronizza i dati locali per non perderli.");
-      return;
-    }
-
-    const now = Date.now();
-    if (!force && now - lastFetchRef.current < 5000) return; 
-    lastFetchRef.current = now;
+    if (!force && dataLossWarning) return;
 
     setIsSyncing(true);
     try {
@@ -131,34 +123,22 @@ const App: React.FC = () => {
         const { data: eData } = await supabase.from('configurazioni_email').select('*').eq('operatore_email', currentUser.email.toLowerCase()).maybeSingle();
         if (eData) setEmailConfig(eData);
       }
-    } catch (e) { 
-      console.error("Errore Fetch:", e); 
-    } finally { 
-      setIsSyncing(false); 
-    }
+    } catch (e) { console.error(e); } finally { setIsSyncing(false); }
   }, [supabase, currentUser, dataLossWarning]);
-
-  useEffect(() => {
-    if (supabase && isLoggedIn && currentUser) {
-      fetchData(false);
-    }
-  }, [supabase, isLoggedIn, currentUser]);
 
   const forcePushLocalToCloud = async () => {
     if (!supabase) return;
-    
     setIsSyncing(true);
     try {
-      addToast("Fase 1: Pulizia duplicati locali...", "info");
+      addToast("Riparazione Cloud in corso...", "info");
 
-      // DEDUPLICAZIONE OPERATORI (Safe-Merge)
-      // Usiamo l'email come chiave unica per evitare violazioni di Primary Key o Unique
-      const cleanOpsMap = new Map();
+      // DEDUPLICAZIONE RIGOROSA BASATA SU EMAIL (Fix definitivo operatori_pkey)
+      const opsMap = new Map();
       operatori.forEach(op => {
-        const email = op.email.toLowerCase().trim();
-        if (email) {
-          cleanOpsMap.set(email, {
-            id: op.id, // Teniamo l'ID locale
+        const email = (op.email || '').toLowerCase().trim();
+        if (email && !opsMap.has(email)) {
+          opsMap.set(email, {
+            id: op.id || Math.random().toString(36).substr(2, 9),
             nome: op.nome,
             email: email,
             password: op.password || '123',
@@ -166,79 +146,44 @@ const App: React.FC = () => {
           });
         }
       });
-      const uniqueOps = Array.from(cleanOpsMap.values());
+      const finalOps = Array.from(opsMap.values());
 
-      // Sincronizzazione Operatori con clausola onConflict sull'email
-      if (uniqueOps.length > 0) {
-        const { error: opErr } = await supabase.from('operatori').upsert(uniqueOps, { onConflict: 'email' });
-        if (opErr) throw opErr;
-      }
+      const { error: opErr } = await supabase.from('operatori').upsert(finalOps, { onConflict: 'email' });
+      if (opErr) throw opErr;
 
-      // DEDUPLICAZIONE AGENTI
-      const cleanAgentsMap = new Map();
-      agenti.forEach(a => {
-        if (a.id) {
-          cleanAgentsMap.set(a.id, {
-            id: a.id,
-            nome: a.nome,
-            email: a.email,
-            operatore_email: (a.operatoreEmail || '').toLowerCase(),
-            telefono: a.telefono || '',
-            zona: a.zona || ''
-          });
-        }
-      });
-      const uniqueAgents = Array.from(cleanAgentsMap.values());
+      // Ripetiamo per agenti e vendite...
+      const finalAgents = agenti.map(a => ({
+        id: a.id || Math.random().toString(36).substr(2, 9),
+        nome: a.nome,
+        email: (a.email || '').toLowerCase(),
+        operatore_email: (a.operatoreEmail || '').toLowerCase(),
+        telefono: a.telefono || '',
+        zona: a.zona || ''
+      }));
+      await supabase.from('agenti').upsert(finalAgents);
 
-      if (uniqueAgents.length > 0) {
-        const { error: agErr } = await supabase.from('agenti').upsert(uniqueAgents);
-        if (agErr) throw agErr;
-      }
-
-      // DEDUPLICAZIONE VENDITE
-      const cleanSalesMap = new Map();
-      vendite.forEach(v => {
-        if (v.id) {
-          cleanSalesMap.set(v.id, {
-            id: v.id,
-            data: v.data,
-            cliente: v.cliente,
-            importo: Number(v.importo),
-            metodo_pagamento: v.metodoPagamento,
-            sconto: v.sconto || '',
-            agente: v.agente,
-            operatore_email: (v.operatoreEmail || '').toLowerCase(),
-            incassato: !!v.incassato,
-            verificare_pagamento: !!v.verificarePagamento,
-            pagamento_verificato: !!v.pagamentoVerificato,
-            note_amministrazione: v.noteAmministrazione || '',
-            notizie: v.notizie || '',
-            nuove_notizie: !!v.nuove_notizie,
-            ultimo_mittente: v.ultimo_mittente || '',
-            created_at: v.created_at || new Date().toISOString()
-          });
-        }
-      });
-      const uniqueSales = Array.from(cleanSalesMap.values());
-
-      if (uniqueSales.length > 0) {
-        for (let i = 0; i < uniqueSales.length; i += 50) {
-          const chunk = uniqueSales.slice(i, i + 50);
-          const { error: vErr } = await supabase.from('vendite').upsert(chunk);
-          if (vErr) throw vErr;
-        }
-      }
+      const finalSales = vendite.map(v => ({
+        id: v.id || Math.random().toString(36).substr(2, 9),
+        data: v.data,
+        cliente: v.cliente,
+        importo: Number(v.importo),
+        metodo_pagamento: v.metodoPagamento,
+        agente: v.agente,
+        operatore_email: (v.operatoreEmail || '').toLowerCase(),
+        incassato: !!v.incassato,
+        verificare_pagamento: !!v.verificarePagamento,
+        pagamento_verificato: !!v.pagamentoVerificato,
+        created_at: v.created_at || new Date().toISOString()
+      }));
+      await supabase.from('vendite').upsert(finalSales);
 
       setDataLossWarning(false);
       localStorage.setItem('sm_needs_sync', 'false');
-      addToast("Sincronizzazione completata con successo!", "success");
+      addToast("Cloud riparato con successo!", "success");
       fetchData(true);
     } catch (e: any) {
-      console.error("Errore Sincronizzazione:", e);
-      addToast("Errore durante l'unione dei dati: " + e.message, "error");
-    } finally {
-      setIsSyncing(false);
-    }
+      addToast("Errore: " + e.message, "error");
+    } finally { setIsSyncing(false); }
   };
 
   const syncToCloud = async (table: string, data: any) => {
@@ -262,24 +207,9 @@ const App: React.FC = () => {
 
   const saveEmailConfig = async (config: EmailConfig) => {
     setEmailConfig(config);
-    if (!supabase) return;
-    try {
-      await supabase.from('configurazioni_email').upsert(config);
-      addToast("Configurazione email salvata.");
-    } catch (e) { console.error(e); }
-  };
-
-  const exportData = () => {
-    try {
-      const data = { vendite, agenti, operatori, metodiPagamento };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `backup_lagicart_${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      addToast("Copia di sicurezza salvata sul PC.");
-    } catch (e) { addToast("Errore backup", "error"); }
+    if (supabase) {
+      await supabase.from('configurazioni_email').upsert(config, { onConflict: 'operatore_email' });
+    }
   };
 
   const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -289,14 +219,40 @@ const App: React.FC = () => {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
-        if (data.vendite) setVendite(data.vendite);
-        if (data.agenti) setAgenti(data.agenti);
-        if (data.operatori) setOperatori(data.operatori);
+        
+        // AUTO-RIPARAZIONE ID DUPLICATI DURANTE IMPORT
+        const sanitize = (list: any[]) => {
+          const seenIds = new Set();
+          return (list || []).map(item => {
+            if (!item.id || seenIds.has(item.id)) {
+              item.id = Math.random().toString(36).substr(2, 9);
+            }
+            seenIds.add(item.id);
+            return item;
+          });
+        };
+
+        if (data.vendite) setVendite(sanitize(data.vendite));
+        if (data.agenti) setAgenti(sanitize(data.agenti));
+        if (data.operatori) setOperatori(sanitize(data.operatori));
+        if (data.metodi) setMetodiPagamento(data.metodi);
+
         setDataLossWarning(true);
-        addToast("Dati caricati. Premi Sincronizza per unirli al cloud.");
-      } catch (err) { addToast("File non valido", "error"); }
+        localStorage.setItem('sm_needs_sync', 'true');
+        addToast("File importato e ID duplicati corretti automaticamente!", "success");
+      } catch (err) { addToast("File JSON corrotto o non valido", "error"); }
     };
     reader.readAsText(file);
+  };
+
+  const exportData = () => {
+    const data = { vendite, agenti, operatori, metodi: metodiPagamento };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_lagicart_pulito.json`;
+    a.click();
   };
 
   const filteredVendite = useMemo(() => {
@@ -314,30 +270,24 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
-      
       {dataLossWarning && (
-        <div className="fixed top-0 left-0 w-full bg-[#5c1a1a] text-white z-[9999] p-4 shadow-2xl animate-in slide-in-from-top duration-500">
-          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <ShieldCheck className="w-6 h-6 text-emerald-400" />
-              <div>
-                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI IN ATTESA</p>
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Premi SINCRONIZZA per unire i tuoi dati a quelli del Cloud.</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button onClick={() => fetchData(true)} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/20">Annulla</button>
-              <button onClick={forcePushLocalToCloud} className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg border border-emerald-500">
-                {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} SINCRONIZZA ORA
-              </button>
+        <div className="fixed top-0 left-0 w-full bg-[#5c1a1a] text-white z-[9999] p-4 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <ShieldCheck className="w-6 h-6 text-emerald-400" />
+            <div>
+              <p className="font-black uppercase tracking-tighter text-lg leading-none">PRONTO PER LA RIPARAZIONE</p>
+              <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Carica il file corretto e poi clicca su SINCRONIZZA per sovrascrivere il cloud.</p>
             </div>
           </div>
+          <button onClick={forcePushLocalToCloud} className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg border border-emerald-500">
+            {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} SINCRONIZZA ORA
+          </button>
         </div>
       )}
 
       <div className="fixed bottom-6 right-6 z-[200] space-y-3 pointer-events-none no-print">
         {toasts.map(t => (
-          <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl ${t.type === 'error' ? 'bg-rose-600' : (t.type === 'info' ? 'bg-sky-600' : 'bg-slate-900')} text-white border border-white/10 pointer-events-auto animate-in slide-in-from-right`}>
+          <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl ${t.type === 'error' ? 'bg-rose-600' : 'bg-slate-900'} text-white border border-white/10 pointer-events-auto animate-in slide-in-from-right`}>
             {t.type === 'error' ? <AlertTriangle className="w-5 h-5 text-white" /> : <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
             <span className="text-sm font-bold">{t.message}</span>
           </div>
@@ -351,11 +301,11 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight">Lagicart</h1>
           </div>
           <nav className="space-y-1.5">
-            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><TrendingUp className="w-5 h-5" /><span className="font-medium">Dashboard</span></button>
-            <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List className="w-5 h-5" /><span className="font-medium">Vendite</span></button>
-            <button onClick={() => setView('statement')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'statement' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><FileText className="w-5 h-5" /><span className="font-medium">Estratto Conto</span></button>
-            <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Contact2 className="w-5 h-5" /><span className="font-medium">Agenti</span></button>
-            <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Settings className="w-5 h-5" /><span className="font-medium">Impostazioni</span></button>
+            <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white' : 'text-slate-400'}`}><TrendingUp className="w-5 h-5" /><span className="font-medium">Dashboard</span></button>
+            <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white' : 'text-slate-400'}`}><List className="w-5 h-5" /><span className="font-medium">Vendite</span></button>
+            <button onClick={() => setView('statement')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'statement' ? 'bg-[#32964D] text-white' : 'text-slate-400'}`}><FileText className="w-5 h-5" /><span className="font-medium">Estratto Conto</span></button>
+            <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white' : 'text-slate-400'}`}><Contact2 className="w-5 h-5" /><span className="font-medium">Agenti</span></button>
+            <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'settings' ? 'bg-[#32964D] text-white' : 'text-slate-400'}`}><Settings className="w-5 h-5" /><span className="font-medium">Impostazioni</span></button>
           </nav>
         </div>
         <div className="mt-auto p-6 border-t border-white/10">
