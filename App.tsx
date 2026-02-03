@@ -82,9 +82,8 @@ const App: React.FC = () => {
   const fetchData = useCallback(async (force = false) => {
     if (!supabase) return;
     
-    // Se abbiamo dati locali non sincronizzati, non scarichiamo nulla per non rischiare sovrascritture
     if (!force && dataLossWarning) {
-      console.warn("Fetch bloccata: Dati locali in attesa di sincronizzazione.");
+      console.warn("Fetch bloccata: sincronizza prima i dati locali.");
       return;
     }
 
@@ -100,7 +99,7 @@ const App: React.FC = () => {
         supabase.from('operatori').select('*')
       ]);
 
-      if (vRes.data && vRes.data.length > 0) {
+      if (vRes.data) {
         const mappedVendite = vRes.data.map(d => ({ 
           ...d, 
           importo: Number(d.importo), 
@@ -114,7 +113,7 @@ const App: React.FC = () => {
         localStorage.setItem('sm_vendite', JSON.stringify(mappedVendite));
       }
       
-      if (aRes.data && aRes.data.length > 0) {
+      if (aRes.data) {
         const mappedAgenti = aRes.data.map(d => ({ 
           ...d, 
           operatoreEmail: (d.operatore_email || '').toLowerCase() 
@@ -123,7 +122,7 @@ const App: React.FC = () => {
         localStorage.setItem('sm_agenti', JSON.stringify(mappedAgenti));
       }
 
-      if (oRes.data && oRes.data.length > 0) {
+      if (oRes.data) {
         setOperatori(oRes.data as Operatore[]);
         localStorage.setItem('sm_operatori', JSON.stringify(oRes.data));
       }
@@ -145,119 +144,101 @@ const App: React.FC = () => {
     }
   }, [supabase, isLoggedIn, currentUser]);
 
-  const exportData = () => {
-    const dataToExport = {
-      vendite,
-      agenti,
-      operatori,
-      metodi: metodiPagamento,
-      exportDate: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `LAGICART_BACKUP_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    addToast("Backup locale scaricato.");
-    return true;
-  };
-
-  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        if (json.vendite || json.agenti) {
-          if (json.vendite) setVendite(json.vendite);
-          if (json.agenti) setAgenti(json.agenti);
-          if (json.operatori) setOperatori(json.operatori);
-          if (json.metodi) setMetodiPagamento(json.metodi);
-          
-          localStorage.setItem('sm_vendite', JSON.stringify(json.vendite || []));
-          localStorage.setItem('sm_agenti', JSON.stringify(json.agenti || []));
-          localStorage.setItem('sm_operatori', JSON.stringify(json.operatori || []));
-          localStorage.setItem('sm_needs_sync', 'true');
-          
-          setDataLossWarning(true);
-          addToast("Dati importati nel PC. Premi SINCRONIZZA ORA per il Cloud.", "info");
-        }
-      } catch (err) {
-        addToast("File non valido.", "error");
-      }
-    };
-    reader.readAsText(file);
-  };
-
   const forcePushLocalToCloud = async () => {
     if (!supabase) {
-      alert("Database non collegato nelle Impostazioni!");
+      alert("Database non collegato!");
       return;
     }
     
     setIsSyncing(true);
     try {
-      addToast("Inizio caricamento granulare...", "info");
+      addToast("Pulizia e sincronizzazione in corso...", "info");
 
-      // 1. Carica Operatori
-      if (operatori.length > 0) {
-        const { error: opErr } = await supabase.from('operatori').upsert(operatori);
-        if (opErr) throw new Error("Errore tabella Operatori: " + opErr.message);
+      // 1. DEDUPLICAZIONE OPERATORI (Risolve l'errore ON CONFLICT)
+      // Usiamo una Map basata sull'email per assicurarci che ogni email appaia una sola volta
+      const uniqueOpsMap = new Map();
+      operatori.forEach(op => {
+        const emailClean = op.email.toLowerCase().trim();
+        if (emailClean) {
+          uniqueOpsMap.set(emailClean, {
+            id: op.id,
+            nome: op.nome,
+            email: emailClean,
+            password: op.password || '123',
+            role: op.role || 'agent'
+          });
+        }
+      });
+      const uniqueOps = Array.from(uniqueOpsMap.values());
+
+      if (uniqueOps.length > 0) {
+        const { error: opErr } = await supabase.from('operatori').upsert(uniqueOps, { onConflict: 'email' });
+        if (opErr) throw opErr;
       }
 
-      // 2. Carica Agenti
-      if (agenti.length > 0) {
-        const mappedAgenti = agenti.map(a => ({
-          id: a.id,
-          nome: a.nome,
-          email: a.email,
-          operatore_email: (a.operatoreEmail || '').toLowerCase(),
-          telefono: a.telefono || '',
-          zona: a.zona || ''
-        }));
+      // 2. DEDUPLICAZIONE AGENTI (Basata su ID)
+      const uniqueAgentsMap = new Map();
+      agenti.forEach(a => {
+        if (a.id) {
+          uniqueAgentsMap.set(a.id, {
+            id: a.id,
+            nome: a.nome,
+            email: a.email,
+            operatore_email: (a.operatoreEmail || '').toLowerCase(),
+            telefono: a.telefono || '',
+            zona: a.zona || ''
+          });
+        }
+      });
+      const mappedAgenti = Array.from(uniqueAgentsMap.values());
+
+      if (mappedAgenti.length > 0) {
         const { error: agErr } = await supabase.from('agenti').upsert(mappedAgenti);
-        if (agErr) throw new Error("Errore tabella Agenti: " + agErr.message);
+        if (agErr) throw agErr;
       }
 
-      // 3. Carica Vendite
-      if (vendite.length > 0) {
-        const mappedVendite = vendite.map(v => ({
-          id: v.id,
-          data: v.data,
-          cliente: v.cliente,
-          importo: Number(v.importo),
-          metodo_pagamento: v.metodoPagamento,
-          sconto: v.sconto || '',
-          agente: v.agente,
-          operatore_email: (v.operatoreEmail || '').toLowerCase(),
-          incassato: !!v.incassato,
-          verificare_pagamento: !!v.verificarePagamento,
-          pagamento_verificato: !!v.pagamentoVerificato,
-          note_amministrazione: v.noteAmministrazione || '',
-          notizie: v.notizie || '',
-          nuove_notizie: !!v.nuove_notizie,
-          ultimo_mittente: v.ultimo_mittente || '',
-          created_at: v.created_at || new Date().toISOString()
-        }));
+      // 3. DEDUPLICAZIONE VENDITE (Basata su ID)
+      const uniqueSalesMap = new Map();
+      vendite.forEach(v => {
+        if (v.id) {
+          uniqueSalesMap.set(v.id, {
+            id: v.id,
+            data: v.data,
+            cliente: v.cliente,
+            importo: Number(v.importo),
+            metodo_pagamento: v.metodoPagamento,
+            sconto: v.sconto || '',
+            agente: v.agente,
+            operatore_email: (v.operatoreEmail || '').toLowerCase(),
+            incassato: !!v.incassato,
+            verificare_pagamento: !!v.verificarePagamento,
+            pagamento_verificato: !!v.pagamentoVerificato,
+            note_amministrazione: v.noteAmministrazione || '',
+            notizie: v.notizie || '',
+            nuove_notizie: !!v.nuove_notizie,
+            ultimo_mittente: v.ultimo_mittente || '',
+            created_at: v.created_at || new Date().toISOString()
+          });
+        }
+      });
+      const mappedVendite = Array.from(uniqueSalesMap.values());
 
-        // Upsert a blocchi di 50 per evitare timeout
+      if (mappedVendite.length > 0) {
+        // Invio a piccoli blocchi per sicurezza
         for (let i = 0; i < mappedVendite.length; i += 50) {
           const chunk = mappedVendite.slice(i, i + 50);
           const { error: vErr } = await supabase.from('vendite').upsert(chunk);
-          if (vErr) throw new Error("Errore tabella Vendite: " + vErr.message);
+          if (vErr) throw vErr;
         }
       }
 
       setDataLossWarning(false);
       localStorage.setItem('sm_needs_sync', 'false');
-      addToast("CLOULD AGGIORNATO CON SUCCESSO!", "success");
+      addToast("Dati sincronizzati con successo!", "success");
       fetchData(true);
     } catch (e: any) {
       console.error("Dettaglio Errore:", e);
-      alert(`FALLIMENTO CARICAMENTO:\n${e.message}\n\nAssicurati di aver eseguito lo script SQL in Supabase.`);
+      alert(`FALLIMENTO CARICAMENTO: ${e.message || 'Errore sconosciuto'}`);
     } finally {
       setIsSyncing(false);
     }
@@ -283,7 +264,7 @@ const App: React.FC = () => {
       if (error) throw error;
       fetchData(false);
     } catch (e) { 
-      addToast("Errore Cloud, dati salvati solo in locale.", "error"); 
+      console.error("Errore sincronizzazione singola:", e);
       setDataLossWarning(true);
       localStorage.setItem('sm_needs_sync', 'true');
     }
@@ -294,8 +275,69 @@ const App: React.FC = () => {
     if (!supabase) return;
     try {
       await supabase.from('configurazioni_email').upsert(config);
-      addToast("Configurazione Email salvata.");
+      addToast("Email configurata.");
     } catch (e) { console.error(e); }
+  };
+
+  const exportData = () => {
+    try {
+      const data = {
+        vendite,
+        agenti,
+        operatori,
+        metodiPagamento,
+        exportDate: new Date().toISOString()
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `backup_lagicart_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      addToast("Backup creato con successo", "success");
+    } catch (e) {
+      addToast("Errore durante l'esportazione", "error");
+    }
+  };
+
+  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const data = JSON.parse(content);
+        
+        if (data.vendite) {
+          setVendite(data.vendite);
+          localStorage.setItem('sm_vendite', JSON.stringify(data.vendite));
+        }
+        if (data.agenti) {
+          setAgenti(data.agenti);
+          localStorage.setItem('sm_agenti', JSON.stringify(data.agenti));
+        }
+        if (data.operatori) {
+          setOperatori(data.operatori);
+          localStorage.setItem('sm_operatori', JSON.stringify(data.operatori));
+        }
+        if (data.metodiPagamento) {
+          setMetodiPagamento(data.metodiPagamento);
+          localStorage.setItem('sm_metodi', JSON.stringify(data.metodiPagamento));
+        }
+
+        setDataLossWarning(true);
+        localStorage.setItem('sm_needs_sync', 'true');
+        addToast("Importazione completata. Sincronizza per unire al cloud.", "success");
+      } catch (err) {
+        addToast("File non valido", "error");
+      }
+    };
+    reader.readAsText(file);
   };
 
   const filteredVendite = useMemo(() => {
@@ -320,12 +362,12 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4">
               <div className="bg-white/10 p-2 rounded-xl border border-white/20"><ShieldCheck className="w-6 h-6 text-emerald-400" /></div>
               <div>
-                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI DA TRASFERIRE</p>
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Stai lavorando su dati salvati solo su questo PC.</p>
+                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI DA SINCRONIZZARE</p>
+                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Premi il tasto a destra per caricare i dati nel Cloud.</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={exportData} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/20"><Download className="w-3 h-3" /> Backup</button>
+              <button onClick={() => fetchData(true)} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/20">Annulla</button>
               <button onClick={forcePushLocalToCloud} className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg border border-emerald-500">
                 {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} SINCRONIZZA ORA
               </button>
@@ -366,7 +408,7 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view.toUpperCase()}</h2>
           <div className="flex items-center gap-4">
-            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> AGGIORNAMENTO...</div>}
+            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> IN CORSO...</div>}
             <button onClick={() => setIsFormOpen(true)} className="bg-[#32964D] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all"><Plus className="w-4 h-4" /> Nuova Pratica</button>
           </div>
         </header>
