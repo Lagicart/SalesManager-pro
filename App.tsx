@@ -83,7 +83,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     
     if (!force && dataLossWarning) {
-      console.warn("Fetch bloccata: salva prima i dati locali per evitare sovrascritture.");
+      console.warn("Fetch bloccata: sincronizza i dati locali per non perderli.");
       return;
     }
 
@@ -145,31 +145,20 @@ const App: React.FC = () => {
   }, [supabase, isLoggedIn, currentUser]);
 
   const forcePushLocalToCloud = async () => {
-    if (!supabase) {
-      alert("Database non configurato correttamente!");
-      return;
-    }
+    if (!supabase) return;
     
     setIsSyncing(true);
     try {
-      addToast("Pulizia rigorosa dei dati in corso...", "info");
+      addToast("Fase 1: Pulizia duplicati locali...", "info");
 
-      // 1. DEDUPLICAZIONE OPERATORI (Risolve operatori_pkey e ON CONFLICT)
-      // Dobbiamo garantire che nell'array finale NON ci siano ID duplicati E NON ci siano Email duplicate.
-      const uniqueOps: any[] = [];
-      const seenIds = new Set<string>();
-      const seenEmails = new Set<string>();
-
-      // Priorità: se troviamo duplicati, teniamo il primo che incontriamo
+      // DEDUPLICAZIONE OPERATORI (Safe-Merge)
+      // Usiamo l'email come chiave unica per evitare violazioni di Primary Key o Unique
+      const cleanOpsMap = new Map();
       operatori.forEach(op => {
         const email = op.email.toLowerCase().trim();
-        const id = op.id;
-
-        if (email && id && !seenIds.has(id) && !seenEmails.has(email)) {
-          seenIds.add(id);
-          seenEmails.add(email);
-          uniqueOps.push({
-            id: id,
+        if (email) {
+          cleanOpsMap.set(email, {
+            id: op.id, // Teniamo l'ID locale
             nome: op.nome,
             email: email,
             password: op.password || '123',
@@ -177,21 +166,19 @@ const App: React.FC = () => {
           });
         }
       });
+      const uniqueOps = Array.from(cleanOpsMap.values());
 
+      // Sincronizzazione Operatori con clausola onConflict sull'email
       if (uniqueOps.length > 0) {
-        // Usiamo upsert standard: se l'ID esiste aggiorna, altrimenti inserisce.
-        // Se l'email è UNIQUE nel DB, Supabase userà quella per il conflitto se specificato.
-        const { error: opErr } = await supabase.from('operatori').upsert(uniqueOps);
-        if (opErr) throw new Error("Errore Tabella Operatori: " + opErr.message);
+        const { error: opErr } = await supabase.from('operatori').upsert(uniqueOps, { onConflict: 'email' });
+        if (opErr) throw opErr;
       }
 
-      // 2. DEDUPLICAZIONE AGENTI (Basata su ID)
-      const uniqueAgents: any[] = [];
-      const seenAgentIds = new Set<string>();
+      // DEDUPLICAZIONE AGENTI
+      const cleanAgentsMap = new Map();
       agenti.forEach(a => {
-        if (a.id && !seenAgentIds.has(a.id)) {
-          seenAgentIds.add(a.id);
-          uniqueAgents.push({
+        if (a.id) {
+          cleanAgentsMap.set(a.id, {
             id: a.id,
             nome: a.nome,
             email: a.email,
@@ -201,19 +188,18 @@ const App: React.FC = () => {
           });
         }
       });
+      const uniqueAgents = Array.from(cleanAgentsMap.values());
 
       if (uniqueAgents.length > 0) {
         const { error: agErr } = await supabase.from('agenti').upsert(uniqueAgents);
-        if (agErr) throw new Error("Errore Tabella Agenti: " + agErr.message);
+        if (agErr) throw agErr;
       }
 
-      // 3. DEDUPLICAZIONE VENDITE (Basata su ID)
-      const uniqueSales: any[] = [];
-      const seenSaleIds = new Set<string>();
+      // DEDUPLICAZIONE VENDITE
+      const cleanSalesMap = new Map();
       vendite.forEach(v => {
-        if (v.id && !seenSaleIds.has(v.id)) {
-          seenSaleIds.add(v.id);
-          uniqueSales.push({
+        if (v.id) {
+          cleanSalesMap.set(v.id, {
             id: v.id,
             data: v.data,
             cliente: v.cliente,
@@ -233,23 +219,23 @@ const App: React.FC = () => {
           });
         }
       });
+      const uniqueSales = Array.from(cleanSalesMap.values());
 
       if (uniqueSales.length > 0) {
-        // Invio a blocchi per evitare timeout
         for (let i = 0; i < uniqueSales.length; i += 50) {
           const chunk = uniqueSales.slice(i, i + 50);
           const { error: vErr } = await supabase.from('vendite').upsert(chunk);
-          if (vErr) throw new Error("Errore Tabella Vendite: " + vErr.message);
+          if (vErr) throw vErr;
         }
       }
 
       setDataLossWarning(false);
       localStorage.setItem('sm_needs_sync', 'false');
-      addToast("DATABASE ALLINEATO CON SUCCESSO!", "success");
+      addToast("Sincronizzazione completata con successo!", "success");
       fetchData(true);
     } catch (e: any) {
-      console.error("Dettaglio Errore Sincronizzazione:", e);
-      alert(`ERRORE CRITICO:\n${e.message}\n\nNota: Se l'errore persiste, potrebbe esserci un'incongruenza tra ID e Email già presenti sul Cloud. Contatta l'amministratore per pulire la tabella Operatori su Supabase.`);
+      console.error("Errore Sincronizzazione:", e);
+      addToast("Errore durante l'unione dei dati: " + e.message, "error");
     } finally {
       setIsSyncing(false);
     }
@@ -262,20 +248,13 @@ const App: React.FC = () => {
       if (table === 'vendite') {
         if (data.metodoPagamento) payload.metodo_pagamento = data.metodoPagamento;
         if (data.operatoreEmail) payload.operatore_email = (data.operatoreEmail || '').toLowerCase();
-        if (data.noteAmministrazione !== undefined) payload.note_amministrazione = data.noteAmministrazione;
-        if (data.verificarePagamento !== undefined) payload.verificare_pagamento = data.verificarePagamento;
-        if (data.pagamentoVerificato !== undefined) payload.pagamento_verificato = data.pagamentoVerificato;
         delete payload.metodoPagamento;
         delete payload.operatoreEmail;
-        delete payload.noteAmministrazione;
-        delete payload.verificarePagamento;
-        delete payload.pagamentoVerificato;
       }
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
       fetchData(false);
     } catch (e) { 
-      console.error("Errore sincronizzazione singola:", e);
       setDataLossWarning(true);
       localStorage.setItem('sm_needs_sync', 'true');
     }
@@ -286,67 +265,36 @@ const App: React.FC = () => {
     if (!supabase) return;
     try {
       await supabase.from('configurazioni_email').upsert(config);
-      addToast("Email configurata.");
+      addToast("Configurazione email salvata.");
     } catch (e) { console.error(e); }
   };
 
   const exportData = () => {
     try {
-      const data = {
-        vendite,
-        agenti,
-        operatori,
-        metodiPagamento,
-        exportDate: new Date().toISOString()
-      };
+      const data = { vendite, agenti, operatori, metodiPagamento };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `backup_lagicart_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      addToast("Backup creato con successo", "success");
-    } catch (e) {
-      addToast("Errore durante l'esportazione", "error");
-    }
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup_lagicart_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      addToast("Copia di sicurezza salvata sul PC.");
+    } catch (e) { addToast("Errore backup", "error"); }
   };
 
   const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const content = event.target?.result as string;
-        const data = JSON.parse(content);
-        
-        if (data.vendite) {
-          setVendite(data.vendite);
-          localStorage.setItem('sm_vendite', JSON.stringify(data.vendite));
-        }
-        if (data.agenti) {
-          setAgenti(data.agenti);
-          localStorage.setItem('sm_agenti', JSON.stringify(data.agenti));
-        }
-        if (data.operatori) {
-          setOperatori(data.operatori);
-          localStorage.setItem('sm_operatori', JSON.stringify(data.operatori));
-        }
-        if (data.metodiPagamento) {
-          setMetodiPagamento(data.metodiPagamento);
-          localStorage.setItem('sm_metodi', JSON.stringify(data.metodiPagamento));
-        }
-
+        const data = JSON.parse(event.target?.result as string);
+        if (data.vendite) setVendite(data.vendite);
+        if (data.agenti) setAgenti(data.agenti);
+        if (data.operatori) setOperatori(data.operatori);
         setDataLossWarning(true);
-        localStorage.setItem('sm_needs_sync', 'true');
-        addToast("Importazione completata. Sincronizza per unire al cloud.", "success");
-      } catch (err) {
-        addToast("File non valido", "error");
-      }
+        addToast("Dati caricati. Premi Sincronizza per unirli al cloud.");
+      } catch (err) { addToast("File non valido", "error"); }
     };
     reader.readAsText(file);
   };
@@ -368,13 +316,13 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
       
       {dataLossWarning && (
-        <div className="fixed top-0 left-0 w-full bg-[#7a1c1c] text-white z-[9999] p-4 shadow-2xl animate-in slide-in-from-top duration-500">
+        <div className="fixed top-0 left-0 w-full bg-[#5c1a1a] text-white z-[9999] p-4 shadow-2xl animate-in slide-in-from-top duration-500">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="bg-white/10 p-2 rounded-xl border border-white/20"><ShieldCheck className="w-6 h-6 text-emerald-400" /></div>
+              <ShieldCheck className="w-6 h-6 text-emerald-400" />
               <div>
-                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI NON SINCRONIZZATI</p>
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Premi SINCRONIZZA per risolvere i conflitti e unire i dati al Cloud.</p>
+                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI IN ATTESA</p>
+                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Premi SINCRONIZZA per unire i tuoi dati a quelli del Cloud.</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
