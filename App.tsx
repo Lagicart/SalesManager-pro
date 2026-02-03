@@ -83,7 +83,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     
     if (!force && dataLossWarning) {
-      console.warn("Fetch bloccata: sincronizza prima i dati locali.");
+      console.warn("Fetch bloccata: salva prima i dati locali per evitare sovrascritture.");
       return;
     }
 
@@ -146,41 +146,52 @@ const App: React.FC = () => {
 
   const forcePushLocalToCloud = async () => {
     if (!supabase) {
-      alert("Database non collegato!");
+      alert("Database non configurato correttamente!");
       return;
     }
     
     setIsSyncing(true);
     try {
-      addToast("Pulizia e sincronizzazione in corso...", "info");
+      addToast("Pulizia rigorosa dei dati in corso...", "info");
 
-      // 1. DEDUPLICAZIONE OPERATORI (Risolve l'errore ON CONFLICT)
-      // Usiamo una Map basata sull'email per assicurarci che ogni email appaia una sola volta
-      const uniqueOpsMap = new Map();
+      // 1. DEDUPLICAZIONE OPERATORI (Risolve operatori_pkey e ON CONFLICT)
+      // Dobbiamo garantire che nell'array finale NON ci siano ID duplicati E NON ci siano Email duplicate.
+      const uniqueOps: any[] = [];
+      const seenIds = new Set<string>();
+      const seenEmails = new Set<string>();
+
+      // Priorità: se troviamo duplicati, teniamo il primo che incontriamo
       operatori.forEach(op => {
-        const emailClean = op.email.toLowerCase().trim();
-        if (emailClean) {
-          uniqueOpsMap.set(emailClean, {
-            id: op.id,
+        const email = op.email.toLowerCase().trim();
+        const id = op.id;
+
+        if (email && id && !seenIds.has(id) && !seenEmails.has(email)) {
+          seenIds.add(id);
+          seenEmails.add(email);
+          uniqueOps.push({
+            id: id,
             nome: op.nome,
-            email: emailClean,
+            email: email,
             password: op.password || '123',
             role: op.role || 'agent'
           });
         }
       });
-      const uniqueOps = Array.from(uniqueOpsMap.values());
 
       if (uniqueOps.length > 0) {
-        const { error: opErr } = await supabase.from('operatori').upsert(uniqueOps, { onConflict: 'email' });
-        if (opErr) throw opErr;
+        // Usiamo upsert standard: se l'ID esiste aggiorna, altrimenti inserisce.
+        // Se l'email è UNIQUE nel DB, Supabase userà quella per il conflitto se specificato.
+        const { error: opErr } = await supabase.from('operatori').upsert(uniqueOps);
+        if (opErr) throw new Error("Errore Tabella Operatori: " + opErr.message);
       }
 
       // 2. DEDUPLICAZIONE AGENTI (Basata su ID)
-      const uniqueAgentsMap = new Map();
+      const uniqueAgents: any[] = [];
+      const seenAgentIds = new Set<string>();
       agenti.forEach(a => {
-        if (a.id) {
-          uniqueAgentsMap.set(a.id, {
+        if (a.id && !seenAgentIds.has(a.id)) {
+          seenAgentIds.add(a.id);
+          uniqueAgents.push({
             id: a.id,
             nome: a.nome,
             email: a.email,
@@ -190,18 +201,19 @@ const App: React.FC = () => {
           });
         }
       });
-      const mappedAgenti = Array.from(uniqueAgentsMap.values());
 
-      if (mappedAgenti.length > 0) {
-        const { error: agErr } = await supabase.from('agenti').upsert(mappedAgenti);
-        if (agErr) throw agErr;
+      if (uniqueAgents.length > 0) {
+        const { error: agErr } = await supabase.from('agenti').upsert(uniqueAgents);
+        if (agErr) throw new Error("Errore Tabella Agenti: " + agErr.message);
       }
 
       // 3. DEDUPLICAZIONE VENDITE (Basata su ID)
-      const uniqueSalesMap = new Map();
+      const uniqueSales: any[] = [];
+      const seenSaleIds = new Set<string>();
       vendite.forEach(v => {
-        if (v.id) {
-          uniqueSalesMap.set(v.id, {
+        if (v.id && !seenSaleIds.has(v.id)) {
+          seenSaleIds.add(v.id);
+          uniqueSales.push({
             id: v.id,
             data: v.data,
             cliente: v.cliente,
@@ -221,24 +233,23 @@ const App: React.FC = () => {
           });
         }
       });
-      const mappedVendite = Array.from(uniqueSalesMap.values());
 
-      if (mappedVendite.length > 0) {
-        // Invio a piccoli blocchi per sicurezza
-        for (let i = 0; i < mappedVendite.length; i += 50) {
-          const chunk = mappedVendite.slice(i, i + 50);
+      if (uniqueSales.length > 0) {
+        // Invio a blocchi per evitare timeout
+        for (let i = 0; i < uniqueSales.length; i += 50) {
+          const chunk = uniqueSales.slice(i, i + 50);
           const { error: vErr } = await supabase.from('vendite').upsert(chunk);
-          if (vErr) throw vErr;
+          if (vErr) throw new Error("Errore Tabella Vendite: " + vErr.message);
         }
       }
 
       setDataLossWarning(false);
       localStorage.setItem('sm_needs_sync', 'false');
-      addToast("Dati sincronizzati con successo!", "success");
+      addToast("DATABASE ALLINEATO CON SUCCESSO!", "success");
       fetchData(true);
     } catch (e: any) {
-      console.error("Dettaglio Errore:", e);
-      alert(`FALLIMENTO CARICAMENTO: ${e.message || 'Errore sconosciuto'}`);
+      console.error("Dettaglio Errore Sincronizzazione:", e);
+      alert(`ERRORE CRITICO:\n${e.message}\n\nNota: Se l'errore persiste, potrebbe esserci un'incongruenza tra ID e Email già presenti sul Cloud. Contatta l'amministratore per pulire la tabella Operatori su Supabase.`);
     } finally {
       setIsSyncing(false);
     }
@@ -362,8 +373,8 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4">
               <div className="bg-white/10 p-2 rounded-xl border border-white/20"><ShieldCheck className="w-6 h-6 text-emerald-400" /></div>
               <div>
-                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI DA SINCRONIZZARE</p>
-                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Premi il tasto a destra per caricare i dati nel Cloud.</p>
+                <p className="font-black uppercase tracking-tighter text-lg leading-none">DATI LOCALI NON SINCRONIZZATI</p>
+                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mt-1">Premi SINCRONIZZA per risolvere i conflitti e unire i dati al Cloud.</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -408,7 +419,7 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view.toUpperCase()}</h2>
           <div className="flex items-center gap-4">
-            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> IN CORSO...</div>}
+            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> SINCRONIZZAZIONE...</div>}
             <button onClick={() => setIsFormOpen(true)} className="bg-[#32964D] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all"><Plus className="w-4 h-4" /> Nuova Pratica</button>
           </div>
         </header>
