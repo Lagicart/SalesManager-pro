@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Vendita } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
 import { DollarSign, TrendingUp, AlertTriangle, Clock, Users, User, ArrowUpRight, ListOrdered } from 'lucide-react';
 
 interface DashboardProps {
@@ -27,15 +27,28 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
       .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
   }, [vendite]);
 
-  // Classifica Agenti per Volume Vendite (Incassato + Pendente)
+  // Classifica Agenti Avanzata (Totale vs Pendente)
   const agentChartData = useMemo(() => {
-    const groups: Record<string, number> = {};
+    const groups: Record<string, { totale: number, pendente: number }> = {};
+    
     vendite.forEach(v => {
-      groups[v.agente] = (groups[v.agente] || 0) + v.importo;
+      if (!groups[v.agente]) {
+        groups[v.agente] = { totale: 0, pendente: 0 };
+      }
+      groups[v.agente].totale += v.importo;
+      if (!v.incassato) {
+        groups[v.agente].pendente += v.importo;
+      }
     });
+
     return Object.entries(groups)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
+      .map(([name, data]) => ({ 
+        name, 
+        totale: data.totale, 
+        pendente: data.pendente,
+        incassato: data.totale - data.pendente
+      }))
+      .sort((a, b) => b.totale - a.totale)
       .slice(0, 10); // Primi 10 agenti
   }, [vendite]);
 
@@ -54,8 +67,6 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
       .sort((a, b) => b.importo - a.importo)
       .slice(0, 8);
   }, [vendite]);
-
-  const COLORS = ['#32964D', '#2d8444', '#28753c', '#1f5a2e', '#4ade80', '#166534', '#064e3b', '#065f46'];
 
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
@@ -160,27 +171,49 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
 
       {/* GRAFICI E CLASSIFICHE */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* TOP AGENTI PER VENDITE */}
+        {/* CLASSIFICA AGENTI AVANZATA (NESTED BAR CHART) */}
         <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-          <div className="flex items-center gap-2 mb-8">
-            <Users className="w-5 h-5 text-[#32964D]" />
-            <h3 className="text-lg font-bold text-slate-800 uppercase tracking-tighter">Performance Team Agenti</h3>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-[#32964D]" />
+              <h3 className="text-lg font-bold text-slate-800 uppercase tracking-tighter">Performance Team Agenti</h3>
+            </div>
+            <div className="flex items-center gap-4">
+               <div className="flex items-center gap-1.5">
+                 <div className="w-3 h-3 rounded-full bg-[#32964D]"></div>
+                 <span className="text-[10px] font-black text-slate-400 uppercase">Totale</span>
+               </div>
+               <div className="flex items-center gap-1.5">
+                 <div className="w-3 h-3 rounded-full bg-rose-500"></div>
+                 <span className="text-[10px] font-black text-slate-400 uppercase">Pendente</span>
+               </div>
+            </div>
           </div>
-          <div className="h-[340px]">
+          
+          <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={agentChartData} layout="vertical" margin={{ left: 20 }}>
+              <BarChart data={agentChartData} layout="vertical" margin={{ left: 20, right: 30 }} barGap={0}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
                 <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10, fontWeight: 900}} width={100} />
-                <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
-                <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={24}>
-                  {agentChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fill: '#1e293b', fontSize: 10, fontWeight: 900}} width={110} />
+                <Tooltip 
+                  cursor={{fill: '#f8fafc'}} 
+                  contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '16px'}}
+                  formatter={(value: any, name: string) => [
+                    `€ ${value.toLocaleString('it-IT')}`, 
+                    name === 'totale' ? 'Volume Totale' : 'Ancora da Incassare'
+                  ]}
+                />
+                {/* Barra Sfondo: Volume Totale (Verde) */}
+                <Bar dataKey="totale" name="totale" fill="#32964D" radius={[0, 8, 8, 0]} barSize={32} />
+                {/* Barra Sovrapposta: Volume Pendente (Rossa) - Più sottile e posizionata sopra */}
+                <Bar dataKey="pendente" name="pendente" fill="#f43f5e" radius={[0, 4, 4, 0]} barSize={14} style={{ transform: 'translateY(-14px)' }} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <p className="mt-4 text-[9px] text-slate-400 font-bold uppercase italic text-center tracking-widest">
+            La barra rossa indica la pendenza rispetto al totale. Un'agente con molta barra rossa ha un alto rischio di incasso.
+          </p>
         </div>
 
         {/* TOP 8 DEBITORI (CLIENTI) */}
