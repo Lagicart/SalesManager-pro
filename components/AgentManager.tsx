@@ -121,7 +121,18 @@ const AgentManager: React.FC<AgentManagerProps> = ({ agenti, operatori, isAdmin,
                     <td className="px-8 py-5"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-xl bg-emerald-50 text-[#32964D] flex items-center justify-center font-black">{agente.nome.charAt(0)}</div><span className="font-black text-slate-900 uppercase text-sm tracking-tighter">{agente.nome}</span></div></td>
                     <td className="px-8 py-5"><div className="text-xs font-bold text-slate-500">{agente.email}</div><div className="text-[10px] font-black text-slate-400">{agente.telefono || '-'}</div></td>
                     <td className="px-8 py-5"><div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg ${op ? 'bg-slate-100' : 'bg-rose-50 text-rose-500'}`}><Users className="w-3 h-3" /><span className="text-[10px] font-black uppercase">{op?.nome || 'NON ASSEGNATO'}</span></div></td>
-                    <td className="px-8 py-5 text-right"><div className="flex items-center justify-end gap-2 opacity-40 group-hover:opacity-100 transition-opacity"><button onClick={() => { setEditingAgent(agente); setFormData({ nome: agente.nome, email: agente.email, operatoreEmail: agente.operatoreEmail || currentUser.email, telefono: agente.telefono || '', zona: agente.zona || '' }); setIsModalOpen(true); }} className="p-3 text-slate-400 hover:text-[#32964D] hover:bg-emerald-50 rounded-xl transition-all"><Pencil className="w-4 h-4" /></button><button onClick={() => onDelete(agente.id)} className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button></div></td>
+                    <td className="px-8 py-5 text-right">
+                      <div className="flex items-center justify-end gap-2 opacity-40 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => { setEditingAgent(agente); setFormData({ nome: agente.nome, email: agente.email, operatoreEmail: agente.operatoreEmail || currentUser.email, telefono: agente.telefono || '', zona: agente.zona || '' }); setIsModalOpen(true); }} className="p-3 text-slate-400 hover:text-[#32964D] hover:bg-emerald-50 rounded-xl transition-all" title="Modifica">
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        {isAdmin && (
+                          <button onClick={() => { if(window.confirm('Eliminare definitivamente questo agente?')) onDelete(agente.id) }} className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" title="Elimina (Solo Admin)">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 )
               }) : (

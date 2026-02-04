@@ -102,7 +102,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Verifica</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Stato</th>
                 <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Importo</th>
-                {isAdmin && <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right no-print">Azioni Admin</th>}
+                <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right no-print">Azioni</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -152,15 +152,28 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                     <td className="px-6 py-5">
                       <div className={`text-sm font-black ${v.incassato ? 'text-emerald-700' : 'text-slate-900'}`}>€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</div>
                     </td>
-                    {isAdmin && (
-                      <td className="px-6 py-5 no-print text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {!v.incassato && <button onClick={() => onIncasso(v.id)} className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-2xl transition-all border border-emerald-100 shadow-sm" title="Conferma Incasso"><CheckCircle2 className="w-5 h-5" /></button>}
-                          <button onClick={() => onEdit(v)} className="p-3 text-slate-300 hover:text-amber-500 hover:bg-slate-50 rounded-2xl transition-all"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={() => onDelete(v.id)} className="p-3 text-slate-300 hover:text-rose-500 hover:bg-slate-50 rounded-2xl transition-all"><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                      </td>
-                    )}
+                    <td className="px-6 py-5 no-print text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Solo Admin può segnare come incassato velocemente dalla tabella */}
+                        {isAdmin && !v.incassato && (
+                          <button onClick={() => onIncasso(v.id)} className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-2xl transition-all border border-emerald-100 shadow-sm" title="Conferma Incasso">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </button>
+                        )}
+                        
+                        {/* Sia Admin che Operatori possono modificare (gli operatori vedono solo le proprie vendite) */}
+                        <button onClick={() => onEdit(v)} className="p-3 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-2xl transition-all" title="Modifica">
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        
+                        {/* Solo Admin può eliminare */}
+                        {isAdmin && (
+                          <button onClick={() => { if(window.confirm('Eliminare definitivamente questa pratica?')) onDelete(v.id) }} className="p-3 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all" title="Elimina">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
