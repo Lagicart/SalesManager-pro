@@ -37,7 +37,6 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Snapshot per offline
   const [vendite, setVendite] = useState<Vendita[]>(() => {
     const saved = localStorage.getItem('emergency_snapshot_vendite');
     return saved ? JSON.parse(saved) : [];
@@ -55,7 +54,6 @@ const App: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
 
-  // Inizializzazione Supabase e salvataggio persistente
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
       setSupabase(createClient(dbConfig.url, dbConfig.key));
@@ -74,7 +72,7 @@ const App: React.FC = () => {
     setIsSyncing(true);
     try {
       const [vRes, aRes, oRes, eRes] = await Promise.all([
-        supabase.from('vendite').select('*').order('created_at', { ascending: false }),
+        supabase.from('vendite').select('*').order('data', { ascending: false }).order('created_at', { ascending: false }),
         supabase.from('agenti').select('*'),
         supabase.from('operatori').select('*'),
         currentUser ? supabase.from('configurazioni_email').select('*').eq('operatore_email', currentUser.email.toLowerCase()).maybeSingle() : Promise.resolve({data: null})
@@ -120,23 +118,27 @@ const App: React.FC = () => {
     try {
       let payload = data;
       if (table === 'vendite') {
+        // Se l'ID esiste già nelle vendite locali, facciamo un merge per non perdere dati (es: importo)
+        const existing = vendite.find(v => v.id === data.id);
+        const merged = existing ? { ...existing, ...data } : data;
+
         payload = {
-          id: data.id,
-          data: data.data,
-          cliente: data.cliente,
-          importo: Number(data.importo),
-          metodo_pagamento: data.metodoPagamento,
-          sconto: data.sconto || '',
-          agente: data.agente,
-          operatore_email: (data.operatoreEmail || '').toLowerCase(),
-          incassato: !!data.incassato,
-          verificare_pagamento: !!data.verificarePagamento,
-          pagamento_verificato: !!data.pagamentoVerificato,
-          note_amministrazione: data.noteAmministrazione || '',
-          notizie: data.notizie || '',
-          nuove_notizie: !!data.nuove_notizie,
-          ultimo_mittente: data.ultimo_mittente || '',
-          created_at: data.created_at || new Date().toISOString()
+          id: merged.id,
+          data: merged.data,
+          cliente: merged.cliente,
+          importo: Number(merged.importo),
+          metodo_pagamento: merged.metodoPagamento,
+          sconto: merged.sconto || '',
+          agente: merged.agente,
+          operatore_email: (merged.operatoreEmail || '').toLowerCase(),
+          incassato: !!merged.incassato,
+          verificare_pagamento: !!merged.verificarePagamento,
+          pagamento_verificato: !!merged.pagamentoVerificato,
+          note_amministrazione: merged.noteAmministrazione || '',
+          notizie: merged.notizie || '',
+          nuove_notizie: !!merged.nuove_notizie,
+          ultimo_mittente: merged.ultimo_mittente || '',
+          created_at: merged.created_at || new Date().toISOString()
         };
       } else if (table === 'agenti') {
         payload = { ...data, operatore_email: (data.operatoreEmail || '').toLowerCase() };

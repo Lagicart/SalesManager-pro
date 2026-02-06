@@ -113,8 +113,8 @@ const Dashboard: React.FC<DashboardProps> = ({ vendite, isAdmin }) => {
                 <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '16px'}} formatter={(val: any) => `€ ${val.toLocaleString('it-IT')}`} />
                 {/* Barra Esterna (Fatturato Totale) */}
                 <Bar dataKey="totale" fill="#32964D" radius={[0, 8, 8, 0]} barSize={32} />
-                {/* Barra Interna (Pendenze) - Più sottile e sovrapposta */}
-                <Bar dataKey="pendente" fill="#f43f5e" radius={[0, 6, 6, 0]} barSize={16} />
+                {/* Barra Interna (Pendenze) - Più sottile e sovrapposta perfettamente centrata */}
+                <Bar dataKey="pendente" fill="#f43f5e" radius={[0, 4, 4, 0]} barSize={14} />
               </BarChart>
             </ResponsiveContainer>
           </div>

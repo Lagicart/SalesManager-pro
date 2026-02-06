@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { Clock, X, Camera, MessageSquare, Send, CheckCircle2, ThumbsUp, Pencil, Trash2, RotateCcw, AlertTriangle, Euro, CreditCard } from 'lucide-react';
+import { Clock, X, MessageSquare, Send, CheckCircle2, ThumbsUp, Pencil, Trash2, RotateCcw, AlertTriangle, Euro, UserSearch, Search } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -17,10 +17,9 @@ interface SalesTableProps {
 
 const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isAdmin, onIncasso, onVerifyPayment, onEdit, onDelete, onUpdateNotizie, currentUserNome }) => {
   const [filters, setFilters] = useState({
-    importo: '', agente: '', data: '', metodo: 'all', status: 'all' as 'all' | 'incassato' | 'pendente'
+    importo: '', agente: '', cliente: '', data: '', metodo: 'all', status: 'all' as 'all' | 'incassato' | 'pendente'
   });
 
-  const [selectedReceipt, setSelectedReceipt] = useState<Vendita | null>(null);
   const [activeChat, setActiveChat] = useState<Vendita | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -29,14 +28,25 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
 
   const filteredData = useMemo(() => {
     let list = [...vendite].filter(v => {
-      const matchImporto = filters.importo ? Number(v.importo) === Number(filters.importo) : true;
+      // Filtraggio dinamico istantaneo
+      const matchImporto = filters.importo ? v.importo.toString().includes(filters.importo) : true;
+      const matchCliente = v.cliente.toLowerCase().includes(filters.cliente.toLowerCase());
       const matchAgente = v.agente.toLowerCase().includes(filters.agente.toLowerCase());
       const matchData = filters.data ? v.data.includes(filters.data) : true;
       const matchMetodo = filters.metodo === 'all' ? true : v.metodoPagamento === filters.metodo;
       const matchStatus = filters.status === 'all' ? true : filters.status === 'incassato' ? v.incassato : !v.incassato;
-      return matchImporto && matchAgente && matchData && matchStatus && matchMetodo;
+      
+      return matchImporto && matchCliente && matchAgente && matchData && matchStatus && matchMetodo;
     });
-    return list.sort((a, b) => new Date(b.created_at || b.data).getTime() - new Date(a.created_at || a.data).getTime());
+
+    // Ordinamento predefinito: Più recente -> Meno recente
+    return list.sort((a, b) => {
+      const dateA = new Date(a.data).getTime();
+      const dateB = new Date(b.data).getTime();
+      if (dateB !== dateA) return dateB - dateA;
+      // Se stessa data, usa created_at per precisione
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
   }, [vendite, filters]);
 
   const totalPendingSum = useMemo(() => {
@@ -70,12 +80,16 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
         </div>
       </div>
 
-      {/* Filtri */}
+      {/* Filtri Dinamici */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 no-print">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div className="relative">
             <Euro className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input type="number" step="0.01" placeholder="Importo..." className="w-full pl-11 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black outline-none focus:border-[#32964D]" value={filters.importo} onChange={e => setFilters({...filters, importo: e.target.value})} />
+            <input type="text" placeholder="Importo..." className="w-full pl-11 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black outline-none focus:border-[#32964D]" value={filters.importo} onChange={e => setFilters({...filters, importo: e.target.value})} />
+          </div>
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" placeholder="Cliente..." className="w-full pl-11 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black uppercase outline-none focus:border-[#32964D]" value={filters.cliente} onChange={e => setFilters({...filters, cliente: e.target.value})} />
           </div>
           <input type="text" placeholder="Agente..." className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black uppercase tracking-tight outline-none focus:border-[#32964D]" value={filters.agente} onChange={e => setFilters({...filters, agente: e.target.value})} />
           <select className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:border-[#32964D]" value={filters.metodo} onChange={e => setFilters({...filters, metodo: e.target.value})}>
@@ -85,7 +99,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
           <input type="date" className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black outline-none focus:border-[#32964D]" value={filters.data} onChange={e => setFilters({...filters, data: e.target.value})} />
           <div className="flex gap-2">
             <select className="flex-1 px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none" value={filters.status} onChange={e => setFilters({...filters, status: e.target.value as any})}><option value="all">Stato</option><option value="incassato">Incassati</option><option value="pendente">Pendenti</option></select>
-            <button onClick={() => setFilters({importo: '', agente: '', data: '', metodo: 'all', status: 'all'})} className="p-3 bg-slate-100 rounded-2xl text-slate-400 hover:text-slate-600 transition-colors"><RotateCcw className="w-5 h-5" /></button>
+            <button onClick={() => setFilters({importo: '', cliente: '', agente: '', data: '', metodo: 'all', status: 'all'})} className="p-3 bg-slate-100 rounded-2xl text-slate-400 hover:text-slate-600 transition-colors"><RotateCcw className="w-5 h-5" /></button>
           </div>
         </div>
       </div>
@@ -154,19 +168,14 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                     </td>
                     <td className="px-6 py-5 no-print text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* Solo Admin può segnare come incassato velocemente dalla tabella */}
                         {isAdmin && !v.incassato && (
                           <button onClick={() => onIncasso(v.id)} className="p-3 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-2xl transition-all border border-emerald-100 shadow-sm" title="Conferma Incasso">
                             <CheckCircle2 className="w-5 h-5" />
                           </button>
                         )}
-                        
-                        {/* Sia Admin che Operatori possono modificare (gli operatori vedono solo le proprie vendite) */}
                         <button onClick={() => onEdit(v)} className="p-3 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-2xl transition-all" title="Modifica">
                           <Pencil className="w-4 h-4" />
                         </button>
-                        
-                        {/* Solo Admin può eliminare */}
                         {isAdmin && (
                           <button onClick={() => { if(window.confirm('Eliminare definitivamente questa pratica?')) onDelete(v.id) }} className="p-3 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all" title="Elimina">
                             <Trash2 className="w-4 h-4" />
@@ -182,7 +191,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
         </div>
       </div>
       
-      {/* Modal Chat (minimal) */}
+      {/* Modal Chat */}
       {activeChat && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl z-[300] flex items-center justify-center p-4">
           <div className="bg-[#e5ddd5] w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-[85vh]">
