@@ -33,6 +33,8 @@ export interface Vendita {
   nuove_notizie?: boolean;
   ultimo_mittente?: string; 
   created_at?: string;
+  ultima_modifica_da?: string;
+  ultima_modifica_at?: string;
 }
 
 export interface EmailConfig {

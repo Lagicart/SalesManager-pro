@@ -4,7 +4,7 @@
 Per far sì che tutti gli operatori vedano gli stessi dati e possano inviare mail con la propria configurazione:
 
 1. **Crea Progetto**: Vai su [Supabase.com](https://supabase.com).
-2. **Crea Tabelle**: Clicca su **SQL Editor** -> **New Query** e incolla questo script (sovrascrive le tabelle esistenti):
+2. **Crea Tabelle**: Clicca sulla sezione **SQL Editor** -> **New Query** e incolla questo script aggiornato:
 
 ```sql
 -- 1. Tabella Vendite
@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS vendite (
   notizie TEXT,
   nuove_notizie BOOLEAN DEFAULT FALSE,
   ultimo_mittente TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+  ultima_modifica_da TEXT,
+  ultima_modifica_at TIMESTAMP WITH TIME ZONE
 );
 
 -- 2. Tabella Configurazione Email

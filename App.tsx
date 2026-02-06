@@ -86,7 +86,9 @@ const App: React.FC = () => {
           operatoreEmail: (d.operatore_email || '').toLowerCase(),
           verificarePagamento: d.verificare_pagamento,
           pagamentoVerificato: d.pagamento_verificato,
-          noteAmministrazione: d.note_amministrazione || ''
+          noteAmministrazione: d.note_amministrazione || '',
+          ultima_modifica_da: d.ultima_modifica_da,
+          ultima_modifica_at: d.ultima_modifica_at
         }));
         setVendite(mapped);
         localStorage.setItem('emergency_snapshot_vendite', JSON.stringify(mapped));
@@ -118,7 +120,6 @@ const App: React.FC = () => {
     try {
       let payload = data;
       if (table === 'vendite') {
-        // Se l'ID esiste già nelle vendite locali, facciamo un merge per non perdere dati (es: importo)
         const existing = vendite.find(v => v.id === data.id);
         const merged = existing ? { ...existing, ...data } : data;
 
@@ -138,7 +139,10 @@ const App: React.FC = () => {
           notizie: merged.notizie || '',
           nuove_notizie: !!merged.nuove_notizie,
           ultimo_mittente: merged.ultimo_mittente || '',
-          created_at: merged.created_at || new Date().toISOString()
+          created_at: merged.created_at || new Date().toISOString(),
+          // Audit Fields
+          ultima_modifica_da: currentUser?.nome || 'Sistema',
+          ultima_modifica_at: new Date().toISOString()
         };
       } else if (table === 'agenti') {
         payload = { ...data, operatore_email: (data.operatoreEmail || '').toLowerCase() };
@@ -244,7 +248,14 @@ const App: React.FC = () => {
           <SalesForm onClose={() => { setIsFormOpen(false); setEditingVendita(null); }} onSubmit={async (d) => {
               const newId = editingVendita?.id || Math.random().toString(36).substr(2, 9);
               try {
-                await syncToCloud('vendite', { ...d, id: newId, operatoreEmail: currentUser.email, data: d.data || new Date().toISOString().split('T')[0] });
+                // BUG FIX: Preservation of the original operatorEmail on edit
+                const opEmail = editingVendita ? editingVendita.operatoreEmail : currentUser.email;
+                await syncToCloud('vendite', { 
+                  ...d, 
+                  id: newId, 
+                  operatoreEmail: opEmail, 
+                  data: d.data || new Date().toISOString().split('T')[0] 
+                });
                 setIsFormOpen(false);
                 setEditingVendita(null);
               } catch(e) {}

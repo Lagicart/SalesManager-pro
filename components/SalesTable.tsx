@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
-import { Clock, X, MessageSquare, Send, CheckCircle2, ThumbsUp, Pencil, Trash2, RotateCcw, AlertTriangle, Euro, UserSearch, Search } from 'lucide-react';
+import { Clock, X, MessageSquare, Send, CheckCircle2, ThumbsUp, Pencil, Trash2, RotateCcw, AlertTriangle, Euro, UserSearch, Search, History } from 'lucide-react';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -129,7 +129,15 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                     <td className="px-6 py-5 text-xs font-black text-slate-400">{new Date(v.data).toLocaleDateString('it-IT')}</td>
                     <td className="px-6 py-5">
                       <div className="font-black text-slate-900 truncate max-w-[200px] uppercase text-sm mb-1">{v.cliente}</div>
-                      <div className="text-[10px] font-black text-[#32964D] uppercase tracking-widest opacity-70">{v.agente}</div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-[10px] font-black text-[#32964D] uppercase tracking-widest opacity-70">{v.agente}</div>
+                        {v.ultima_modifica_da && (
+                          <div className="flex items-center gap-1.5 text-[8px] font-black text-slate-400 uppercase tracking-tighter mt-1 bg-slate-50 w-fit px-2 py-0.5 rounded-md border border-slate-100">
+                            <History className="w-2.5 h-2.5" />
+                            <span>Ultima mod: {v.ultima_modifica_da} ({new Date(v.ultima_modifica_at || '').toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})})</span>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-5 text-center">
                        <span className="text-xs font-black text-slate-600 uppercase bg-slate-100 px-4 py-1.5 rounded-lg border border-slate-200 whitespace-nowrap">{v.metodoPagamento}</span>
