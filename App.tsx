@@ -37,7 +37,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // SICUREZZA: Caricamento iniziale da Local Storage (Snapshot) per evitare schermi vuoti
+  // Snapshot per offline
   const [vendite, setVendite] = useState<Vendita[]>(() => {
     const saved = localStorage.getItem('emergency_snapshot_vendite');
     return saved ? JSON.parse(saved) : [];
@@ -55,9 +55,11 @@ const App: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
 
+  // Inizializzazione Supabase e salvataggio persistente
   useEffect(() => {
     if (dbConfig?.url && dbConfig?.key) {
       setSupabase(createClient(dbConfig.url, dbConfig.key));
+      localStorage.setItem('sm_db_config', JSON.stringify(dbConfig));
     }
   }, [dbConfig]);
 
@@ -100,7 +102,7 @@ const App: React.FC = () => {
       if (eRes.data) setEmailConfig(eRes.data);
     } catch (e: any) { 
       console.error(e);
-      addToast("Problema Cloud: uso dati salvati sul PC", "error");
+      addToast("Problema Cloud: uso dati locali", "error");
     } finally { setIsSyncing(false); }
   }, [supabase, currentUser]);
 
@@ -112,32 +114,31 @@ const App: React.FC = () => {
     }
   }, [supabase, isLoggedIn, currentUser, fetchData]);
 
-  const mapVenditaToDb = (v: any) => ({
-    id: v.id,
-    data: v.data,
-    cliente: v.cliente,
-    importo: Number(v.importo),
-    metodo_pagamento: v.metodoPagamento,
-    sconto: v.sconto || '',
-    agente: v.agente,
-    operatore_email: (v.operatoreEmail || '').toLowerCase(),
-    incassato: !!v.incassato,
-    verificare_pagamento: !!v.verificarePagamento,
-    pagamento_verificato: !!v.pagamentoVerificato,
-    note_amministrazione: v.noteAmministrazione || '',
-    notizie: v.notizie || '',
-    nuove_notizie: !!v.nuove_notizie,
-    ultimo_mittente: v.ultimo_mittente || '',
-    created_at: v.created_at || new Date().toISOString()
-  });
-
   const syncToCloud = async (table: string, data: any) => {
     if (!supabase) return;
     setIsSyncing(true);
     try {
       let payload = data;
-      if (table === 'vendite') payload = mapVenditaToDb(data);
-      else if (table === 'agenti') {
+      if (table === 'vendite') {
+        payload = {
+          id: data.id,
+          data: data.data,
+          cliente: data.cliente,
+          importo: Number(data.importo),
+          metodo_pagamento: data.metodoPagamento,
+          sconto: data.sconto || '',
+          agente: data.agente,
+          operatore_email: (data.operatoreEmail || '').toLowerCase(),
+          incassato: !!data.incassato,
+          verificare_pagamento: !!data.verificarePagamento,
+          pagamento_verificato: !!data.pagamentoVerificato,
+          note_amministrazione: data.noteAmministrazione || '',
+          notizie: data.notizie || '',
+          nuove_notizie: !!data.nuove_notizie,
+          ultimo_mittente: data.ultimo_mittente || '',
+          created_at: data.created_at || new Date().toISOString()
+        };
+      } else if (table === 'agenti') {
         payload = { ...data, operatore_email: (data.operatoreEmail || '').toLowerCase() };
         delete payload.operatoreEmail;
       }
@@ -145,71 +146,13 @@ const App: React.FC = () => {
       const { error } = await supabase.from(table).upsert(payload);
       if (error) throw error;
       
-      addToast("Modifica salvata sul Cloud", "success");
+      addToast("Dati sincronizzati", "success");
       await fetchData();
       return true;
     } catch (e: any) {
-      addToast("Errore salvataggio: " + e.message, "error");
+      addToast("Errore Cloud: " + e.message, "error");
       throw e;
     } finally { setIsSyncing(false); }
-  };
-
-  const exportData = () => {
-    try {
-      const dataToExport = { 
-        vendite, 
-        agenti, 
-        operatori,
-        emailConfig,
-        backup_info: {
-          timestamp: new Date().toISOString(),
-          label: "LAGICART_SECURITY_BACKUP"
-        }
-      };
-      
-      const jsonString = JSON.stringify(dataToExport, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      // Creazione elemento di download forzato
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `LAGICART_DATA_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      
-      // Pulizia
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      addToast("Backup JSON scaricato correttamente!", "success");
-    } catch (err) {
-      console.error(err);
-      addToast("Errore durante il download del backup", "error");
-    }
-  };
-
-  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
-        if (data.vendite) {
-          setVendite(data.vendite);
-          localStorage.setItem('emergency_snapshot_vendite', JSON.stringify(data.vendite));
-        }
-        if (data.agenti) {
-          setAgenti(data.agenti);
-          localStorage.setItem('emergency_snapshot_agenti', JSON.stringify(data.agenti));
-        }
-        addToast("Dati ripristinati con successo!", "success");
-      } catch (err) { 
-        addToast("Il file caricato non è valido", "error"); 
-      }
-    };
-    reader.readAsText(file);
   };
 
   const handleLogout = () => {
@@ -242,7 +185,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col md:flex-row font-sans text-slate-900 print:bg-white print:block">
-      {/* Toast Alert System */}
       <div className="fixed bottom-6 right-6 z-[200] space-y-3 pointer-events-none no-print">
         {toasts.map(t => (
           <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl ${t.type === 'error' ? 'bg-rose-600' : 'bg-slate-900'} text-white border border-white/10 pointer-events-auto animate-in slide-in-from-right`}>
@@ -278,14 +220,14 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view.toUpperCase()}</h2>
           <div className="flex items-center gap-4">
-            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> SINCRONIZZAZIONE...</div>}
+            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> AGGIORNAMENTO...</div>}
             <button onClick={() => setIsFormOpen(true)} className="bg-[#32964D] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all"><Plus className="w-4 h-4" /> Nuova Pratica</button>
           </div>
         </header>
 
         <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
           <div className="max-w-7xl mx-auto">
-            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={(c) => syncToCloud('configurazioni_email', c)} onEmergencyExport={exportData} onEmergencyImport={importData} />}
+            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={(c) => syncToCloud('configurazioni_email', c)} onEmergencyExport={() => {}} onEmergencyImport={() => {}} />}
             {view === 'statement' && <StatementOfAccount agenti={filteredAgenti} vendite={filteredVendite} metodiDisponibili={metodiPagamento} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} />}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
             {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} onVerifyPayment={(id) => syncToCloud('vendite', {id, pagamentoVerificato: true})} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={(id) => supabase?.from('vendite').delete().eq('id', id).then(() => fetchData())} onUpdateNotizie={(id, txt, neu, mit) => syncToCloud('vendite', {id, notizie: txt, nuove_notizie: neu, ultimo_mittente: mit})} currentUserNome={currentUser.nome} />}
