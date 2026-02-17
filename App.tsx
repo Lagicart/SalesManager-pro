@@ -168,6 +168,98 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
+  // FUNZIONI DI BACKUP JSON
+  const handleEmergencyExport = () => {
+    const data = {
+      vendite,
+      agenti,
+      operatori,
+      metodiPagamento,
+      emailConfig,
+      dbConfig,
+      exportDate: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `lagicart_backup_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addToast("Backup salvato correttamente", "success");
+  };
+
+  const handleEmergencyImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (data.vendite) setVendite(data.vendite);
+        if (data.agenti) setAgenti(data.agenti);
+        if (data.operatori) setOperatori(data.operatori);
+        if (data.metodiPagamento) setMetodiPagamento(data.metodiPagamento);
+        addToast("Ripristino completato! Sincronizzare se necessario.", "info");
+      } catch (err) {
+        addToast("Errore: file JSON non valido", "error");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleEmergencyPush = async () => {
+    if (!supabase || currentUser?.role !== 'admin') return;
+    if (!window.confirm("Sei sicuro di voler SOVRASCRIVERE il Cloud con i dati di questo PC?")) return;
+    
+    setIsSyncing(true);
+    try {
+      const mappedVendite = vendite.map(v => ({
+        id: v.id,
+        data: v.data,
+        cliente: v.cliente,
+        importo: Number(v.importo),
+        metodo_pagamento: v.metodoPagamento,
+        sconto: v.sconto,
+        agente: v.agente,
+        operatore_email: v.operatoreEmail,
+        incassato: v.incassato,
+        verificare_pagamento: v.verificarePagamento,
+        pagamento_verificato: v.pagamentoVerificato,
+        note_amministrazione: v.noteAmministrazione,
+        notizie: v.notizie,
+        nuove_notizie: v.nuove_notizie,
+        ultimo_mittente: v.ultimo_mittente,
+        created_at: v.created_at,
+        ultima_modifica_da: v.ultima_modifica_da,
+        ultima_modifica_at: v.ultima_modifica_at
+      }));
+
+      const mappedAgenti = agenti.map(a => ({
+        id: a.id,
+        nome: a.nome,
+        email: a.email,
+        operatore_email: a.operatoreEmail,
+        telefono: a.telefono,
+        zona: a.zona
+      }));
+
+      await Promise.all([
+        supabase.from('vendite').upsert(mappedVendite),
+        supabase.from('agenti').upsert(mappedAgenti),
+        supabase.from('operatori').upsert(operatori)
+      ]);
+
+      addToast("Database Cloud allineato!", "success");
+      fetchData();
+    } catch (e: any) {
+      addToast("Errore durante il push: " + e.message, "error");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const filteredVendite = useMemo(() => {
     if (!currentUser) return [];
     let list = [...vendite];
@@ -233,7 +325,7 @@ const App: React.FC = () => {
 
         <section className="flex-1 overflow-auto p-8 bg-[#f1f5f9]/50">
           <div className="max-w-7xl mx-auto">
-            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={(c) => syncToCloud('configurazioni_email', c)} onEmergencyExport={() => {}} onEmergencyImport={() => {}} />}
+            {view === 'settings' && <SettingsManager metodi={metodiPagamento} onUpdate={setMetodiPagamento} isAdmin={currentUser.role === 'admin'} dbConfig={dbConfig} onDbConfigChange={setDbConfig} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onEmailConfigChange={(c) => syncToCloud('configurazioni_email', c)} onEmergencyPush={handleEmergencyPush} onEmergencyExport={handleEmergencyExport} onEmergencyImport={handleEmergencyImport} />}
             {view === 'statement' && <StatementOfAccount agenti={filteredAgenti} vendite={filteredVendite} metodiDisponibili={metodiPagamento} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} />}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
             {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} onVerifyPayment={(id) => syncToCloud('vendite', {id, pagamentoVerificato: true})} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={(id) => supabase?.from('vendite').delete().eq('id', id).then(() => fetchData())} onUpdateNotizie={(id, txt, neu, mit) => syncToCloud('vendite', {id, notizie: txt, nuove_notizie: neu, ultimo_mittente: mit})} currentUserNome={currentUser.nome} />}
@@ -248,7 +340,6 @@ const App: React.FC = () => {
           <SalesForm onClose={() => { setIsFormOpen(false); setEditingVendita(null); }} onSubmit={async (d) => {
               const newId = editingVendita?.id || Math.random().toString(36).substr(2, 9);
               try {
-                // BUG FIX: Preservation of the original operatorEmail on edit
                 const opEmail = editingVendita ? editingVendita.operatoreEmail : currentUser.email;
                 await syncToCloud('vendite', { 
                   ...d, 
