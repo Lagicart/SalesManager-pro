@@ -134,7 +134,7 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
                         {v.ultima_modifica_da && (
                           <div className="flex items-center gap-1.5 text-[8px] font-black text-slate-400 uppercase tracking-tighter mt-1 bg-slate-50 w-fit px-2 py-0.5 rounded-md border border-slate-100">
                             <History className="w-2.5 h-2.5" />
-                            <span>Ultima mod: {v.ultima_modifica_da} ({new Date(v.ultima_modifica_at || '').toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})})</span>
+                            <span>Ultima mod: {v.ultima_modifica_da} {new Date(v.ultima_modifica_at || '').toLocaleDateString('it-IT')} ({new Date(v.ultima_modifica_at || '').toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})})</span>
                           </div>
                         )}
                       </div>

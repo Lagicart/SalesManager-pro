@@ -345,7 +345,7 @@ const App: React.FC = () => {
                   ...d, 
                   id: newId, 
                   operatoreEmail: opEmail, 
-                  data: d.data || new Date().toISOString().split('T')[0] 
+                  data: editingVendita ? editingVendita.data : (d.data || new Date().toISOString().split('T')[0]) 
                 });
                 setIsFormOpen(false);
                 setEditingVendita(null);
