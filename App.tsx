@@ -24,7 +24,12 @@ interface Toast {
 const App: React.FC = () => {
   const [dbConfig, setDbConfig] = useState<{url: string, key: string} | null>(() => {
     const saved = localStorage.getItem('sm_db_config');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error('Error parsing sm_db_config from localStorage', e);
+      return null;
+    }
   });
 
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
@@ -34,16 +39,31 @@ const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('sm_is_logged_in') === 'true');
   const [currentUser, setCurrentUser] = useState<Operatore | null>(() => {
     const saved = localStorage.getItem('sm_current_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error('Error parsing sm_current_user from localStorage', e);
+      return null;
+    }
   });
 
   const [vendite, setVendite] = useState<Vendita[]>(() => {
     const saved = localStorage.getItem('emergency_snapshot_vendite');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Error parsing emergency_snapshot_vendite from localStorage', e);
+      return [];
+    }
   });
   const [agenti, setAgenti] = useState<Agente[]>(() => {
     const saved = localStorage.getItem('emergency_snapshot_agenti');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Error parsing emergency_snapshot_agenti from localStorage', e);
+      return [];
+    }
   });
   const [operatori, setOperatori] = useState<Operatore[]>([]);
   const [emailConfig, setEmailConfig] = useState<EmailConfig | null>(null);
