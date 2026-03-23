@@ -25,7 +25,8 @@ const App: React.FC = () => {
   const [dbConfig, setDbConfig] = useState<{url: string, key: string} | null>(() => {
     const saved = localStorage.getItem('sm_db_config');
     try {
-      return saved ? JSON.parse(saved) : null;
+      const parsed = saved ? JSON.parse(saved) : null;
+      return (parsed && typeof parsed === 'object' && 'url' in parsed) ? parsed : null;
     } catch (e) {
       console.error('Error parsing sm_db_config from localStorage', e);
       return null;
@@ -40,7 +41,8 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<Operatore | null>(() => {
     const saved = localStorage.getItem('sm_current_user');
     try {
-      return saved ? JSON.parse(saved) : null;
+      const parsed = saved ? JSON.parse(saved) : null;
+      return (parsed && typeof parsed === 'object' && 'email' in parsed) ? parsed : null;
     } catch (e) {
       console.error('Error parsing sm_current_user from localStorage', e);
       return null;
@@ -50,7 +52,8 @@ const App: React.FC = () => {
   const [vendite, setVendite] = useState<Vendita[]>(() => {
     const saved = localStorage.getItem('emergency_snapshot_vendite');
     try {
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error parsing emergency_snapshot_vendite from localStorage', e);
       return [];
@@ -59,7 +62,8 @@ const App: React.FC = () => {
   const [agenti, setAgenti] = useState<Agente[]>(() => {
     const saved = localStorage.getItem('emergency_snapshot_agenti');
     try {
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error parsing emergency_snapshot_agenti from localStorage', e);
       return [];

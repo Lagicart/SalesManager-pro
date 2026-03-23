@@ -25,7 +25,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ operatori, onLogin, onConfigC
   const [dbConfig, setDbConfig] = useState<{url: string, key: string} | null>(() => {
     const saved = localStorage.getItem('sm_db_config');
     try {
-      return saved ? JSON.parse(saved) : null;
+      const parsed = saved ? JSON.parse(saved) : null;
+      return (parsed && typeof parsed === 'object' && 'url' in parsed) ? parsed : null;
     } catch (e) {
       console.error('Error parsing sm_db_config from localStorage', e);
       return null;
