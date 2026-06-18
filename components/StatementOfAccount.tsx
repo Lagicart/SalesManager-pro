@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Agente, Vendita, EmailConfig } from '../types';
 import { User, FileText, Mail, Printer, Clock, CheckCircle2, Search, X, Send, Filter, Zap, Loader2, Check, Globe, Info, Copy, CheckCircle } from 'lucide-react';
+import { DateRange } from 'react-day-picker';
+import DateRangePicker from './DateRangePicker';
 
 interface StatementOfAccountProps {
   agenti: Agente[];
@@ -13,6 +15,7 @@ interface StatementOfAccountProps {
 const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite, metodiDisponibili, emailConfig }) => {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [selectedMethods, setSelectedMethods] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
@@ -42,10 +45,24 @@ const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite
         const matchAgent = v.agente.toLowerCase() === selectedAgent.nome.toLowerCase();
         const matchStatus = !v.incassato;
         const matchMethod = selectedMethods.length === 0 || selectedMethods.includes(v.metodoPagamento);
-        return matchAgent && matchStatus && matchMethod;
+        
+        let matchData = true;
+        if (dateRange?.from) {
+          const vDate = new Date(v.data).getTime();
+          const fromDate = dateRange.from.getTime();
+          if (dateRange.to) {
+            const toDate = dateRange.to.getTime() + 24 * 60 * 60 * 1000 - 1;
+            matchData = vDate >= fromDate && vDate <= toDate;
+          } else {
+            const nextDay = fromDate + 24 * 60 * 60 * 1000 - 1;
+            matchData = vDate >= fromDate && vDate <= nextDay;
+          }
+        }
+
+        return matchAgent && matchStatus && matchMethod && matchData;
       })
       .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
-  }, [selectedAgent, vendite, selectedMethods]);
+  }, [selectedAgent, vendite, selectedMethods, dateRange]);
 
   const totalPending = useMemo(() => pendingSales.reduce((sum, v) => sum + v.importo, 0), [pendingSales]);
 
@@ -134,7 +151,7 @@ ${emailConfig.from_name || 'Amministrazione Lagicart S.r.l.'}`;
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 border-t border-slate-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-6 border-t border-slate-100">
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Seleziona Agente</label>
             <select 
@@ -147,6 +164,14 @@ ${emailConfig.from_name || 'Amministrazione Lagicart S.r.l.'}`;
                 <option key={a.id} value={a.id}>{a.nome}</option>
               ))}
             </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Filtra Periodo</label>
+            <DateRangePicker 
+              date={dateRange} 
+              setDate={setDateRange} 
+              className="mt-1 flex-1"
+            />
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Filtra per Metodo</label>

@@ -2,6 +2,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vendita } from '../types';
 import { Clock, X, MessageSquare, Send, CheckCircle2, ThumbsUp, Pencil, Trash2, RotateCcw, AlertTriangle, Euro, UserSearch, Search, History } from 'lucide-react';
+import { DateRange } from 'react-day-picker';
+import DateRangePicker from './DateRangePicker';
 
 interface SalesTableProps {
   vendite: Vendita[];
@@ -17,7 +19,7 @@ interface SalesTableProps {
 
 const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isAdmin, onIncasso, onVerifyPayment, onEdit, onDelete, onUpdateNotizie, currentUserNome }) => {
   const [filters, setFilters] = useState({
-    importo: '', agente: '', cliente: '', data: '', metodo: 'all', status: 'all' as 'all' | 'incassato' | 'pendente'
+    importo: '', agente: '', cliente: '', dateRange: undefined as DateRange | undefined, metodo: 'all', status: 'all' as 'all' | 'incassato' | 'pendente'
   });
 
   const [activeChat, setActiveChat] = useState<Vendita | null>(null);
@@ -32,7 +34,22 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
       const matchImporto = filters.importo ? v.importo.toString().includes(filters.importo) : true;
       const matchCliente = v.cliente.toLowerCase().includes(filters.cliente.toLowerCase());
       const matchAgente = v.agente.toLowerCase().includes(filters.agente.toLowerCase());
-      const matchData = filters.data ? v.data.includes(filters.data) : true;
+      
+      let matchData = true;
+      if (filters.dateRange?.from) {
+        const vDate = new Date(v.data).getTime();
+        const fromDate = filters.dateRange.from.getTime();
+        if (filters.dateRange.to) {
+          // Adjust 'to' date to the end of the day to include all sales on that day
+          const toDate = filters.dateRange.to.getTime() + 24 * 60 * 60 * 1000 - 1;
+          matchData = vDate >= fromDate && vDate <= toDate;
+        } else {
+          // Only 'from' is selected, filter for exact day
+          const nextDay = fromDate + 24 * 60 * 60 * 1000 - 1;
+          matchData = vDate >= fromDate && vDate <= nextDay;
+        }
+      }
+
       const matchMetodo = filters.metodo === 'all' ? true : v.metodoPagamento === filters.metodo;
       const matchStatus = filters.status === 'all' ? true : filters.status === 'incassato' ? v.incassato : !v.incassato;
       
@@ -96,10 +113,13 @@ const SalesTable: React.FC<SalesTableProps> = ({ vendite, metodiDisponibili, isA
              <option value="all">Tutti i Metodi</option>
              {metodiDisponibili.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
-          <input type="date" className="px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xs font-black outline-none focus:border-[#32964D]" value={filters.data} onChange={e => setFilters({...filters, data: e.target.value})} />
+          <DateRangePicker 
+            date={filters.dateRange} 
+            setDate={r => setFilters({...filters, dateRange: r})} 
+          />
           <div className="flex gap-2">
             <select className="flex-1 px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none" value={filters.status} onChange={e => setFilters({...filters, status: e.target.value as any})}><option value="all">Stato</option><option value="incassato">Incassati</option><option value="pendente">Pendenti</option></select>
-            <button onClick={() => setFilters({importo: '', cliente: '', agente: '', data: '', metodo: 'all', status: 'all'})} className="p-3 bg-slate-100 rounded-2xl text-slate-400 hover:text-slate-600 transition-colors"><RotateCcw className="w-5 h-5" /></button>
+            <button onClick={() => setFilters({importo: '', cliente: '', agente: '', dateRange: undefined, metodo: 'all', status: 'all'})} className="p-3 bg-slate-100 rounded-2xl text-slate-400 hover:text-slate-600 transition-colors"><RotateCcw className="w-5 h-5" /></button>
           </div>
         </div>
       </div>
