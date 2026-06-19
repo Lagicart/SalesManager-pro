@@ -10,9 +10,11 @@ interface StatementOfAccountProps {
   vendite: Vendita[];
   metodiDisponibili: string[];
   emailConfig: EmailConfig;
+  onIncasso?: (id: string) => void;
+  isAdmin?: boolean;
 }
 
-const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite, metodiDisponibili, emailConfig }) => {
+const StatementOfAccount: React.FC<StatementOfAccountProps> = ({ agenti, vendite, metodiDisponibili, emailConfig, onIncasso, isAdmin }) => {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [selectedMethods, setSelectedMethods] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -211,6 +213,9 @@ ${emailConfig.from_name || 'Amministrazione Lagicart S.r.l.'}`;
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Metodo</th>
                   <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Importo</th>
+                  {isAdmin && onIncasso && (
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right no-print">Azioni</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -222,6 +227,17 @@ ${emailConfig.from_name || 'Amministrazione Lagicart S.r.l.'}`;
                       <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">{v.metodoPagamento}</span>
                     </td>
                     <td className="px-6 py-4 text-right text-sm font-black text-slate-900">€ {v.importo.toLocaleString('it-IT', { minimumFractionDigits: 2 })}</td>
+                    {isAdmin && onIncasso && (
+                      <td className="px-6 py-4 text-right no-print">
+                        <button 
+                          onClick={() => onIncasso(v.id)} 
+                          className="p-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl transition-all border border-emerald-100 shadow-sm inline-flex items-center justify-center" 
+                          title="Conferma Incasso"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
