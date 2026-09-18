@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Vendita, Operatore, Agente, EmailConfig } from './types';
-import { Plus, List, TrendingUp, Contact2, Users, Settings, FileText, CheckCircle2, AlertTriangle, RefreshCw, Download, FileJson, ShieldCheck } from 'lucide-react';
+import { Vendita, Operatore, Agente, EmailConfig, OrdineSito } from './types';
+import { Plus, List, TrendingUp, Contact2, Users, Settings, FileText, CheckCircle2, AlertTriangle, RefreshCw, Download, FileJson, ShieldCheck, ShoppingBag } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import SalesTable from './components/SalesTable';
 import SalesForm from './components/SalesForm';
@@ -12,6 +12,8 @@ import OperatorManager from './components/OperatorManager';
 import SettingsManager from './components/SettingsManager';
 import LoginScreen from './components/LoginScreen';
 import StatementOfAccount from './components/StatementOfAccount';
+import SiteOrdersList from './components/SiteOrdersList';
+import SiteOrderModal from './components/SiteOrderModal';
 
 const BRAND_LOGO_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2332964D'/%3E%3Cpath d='M30 70 L70 30 M45 30 L70 30 L70 55' stroke='white' stroke-width='12' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
 
@@ -73,7 +75,19 @@ const App: React.FC = () => {
   const [emailConfig, setEmailConfig] = useState<EmailConfig | null>(null);
   const [metodiPagamento, setMetodiPagamento] = useState<string[]>(['Bonifico', 'Rimessa Diretta', 'Assegno', 'Contanti', 'POS']);
   
-  const [view, setView] = useState<'dashboard' | 'list' | 'statement' | 'agents' | 'operators' | 'settings'>('dashboard');
+  const [ordiniSito, setOrdiniSito] = useState<OrdineSito[]>(() => {
+    const saved = localStorage.getItem('emergency_snapshot_ordini_sito');
+    try {
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error('Error parsing emergency_snapshot_ordini_sito from localStorage', e);
+      return [];
+    }
+  });
+  const [isSiteOrderModalOpen, setIsSiteOrderModalOpen] = useState(false);
+
+  const [view, setView] = useState<'dashboard' | 'list' | 'statement' | 'site_orders' | 'agents' | 'operators' | 'settings'>('dashboard');
   const [viewAsEmail, setViewAsEmail] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingVendita, setEditingVendita] = useState<Vendita | null>(null);
@@ -95,11 +109,12 @@ const App: React.FC = () => {
     if (!supabase) return;
     setIsSyncing(true);
     try {
-      const [vRes, aRes, oRes, eRes] = await Promise.all([
+      const [vRes, aRes, oRes, eRes, osRes] = await Promise.all([
         supabase.from('vendite').select('*').order('data', { ascending: false }).order('created_at', { ascending: false }),
         supabase.from('agenti').select('*'),
         supabase.from('operatori').select('*'),
-        currentUser ? supabase.from('configurazioni_email').select('*').eq('operatore_email', currentUser.email.toLowerCase()).maybeSingle() : Promise.resolve({data: null})
+        currentUser ? supabase.from('configurazioni_email').select('*').eq('operatore_email', currentUser.email.toLowerCase()).maybeSingle() : Promise.resolve({data: null}),
+        supabase.from('ordini_sito').select('*').order('data_inserimento', { ascending: false })
       ]);
 
       if (vRes.data) {
@@ -124,6 +139,24 @@ const App: React.FC = () => {
       }
       if (oRes.data) setOperatori(oRes.data);
       if (eRes.data) setEmailConfig(eRes.data);
+
+      if (osRes && osRes.data) {
+        const mappedOS: OrdineSito[] = osRes.data.map(d => ({
+          id: d.id,
+          cliente: d.cliente,
+          importo: Number(d.importo),
+          mese_riferimento: d.mese_riferimento,
+          data_inserimento: d.data_inserimento,
+          operatore_nome: d.operatore_nome,
+          operatore_email: (d.operatore_email || '').toLowerCase(),
+          importo_originale: d.importo_originale !== undefined && d.importo_originale !== null ? Number(d.importo_originale) : Number(d.importo),
+          storico_modifiche: Array.isArray(d.storico_modifiche) ? d.storico_modifiche : [],
+          created_at: d.created_at,
+          updated_at: d.updated_at
+        }));
+        setOrdiniSito(mappedOS);
+        localStorage.setItem('emergency_snapshot_ordini_sito', JSON.stringify(mappedOS));
+      }
     } catch (e: any) { 
       console.error(e);
       addToast("Problema Cloud: uso dati locali", "error");
@@ -171,6 +204,20 @@ const App: React.FC = () => {
       } else if (table === 'agenti') {
         payload = { ...data, operatore_email: (data.operatoreEmail || '').toLowerCase() };
         delete payload.operatoreEmail;
+      } else if (table === 'ordini_sito') {
+        payload = {
+          id: data.id,
+          cliente: data.cliente,
+          importo: Number(data.importo),
+          mese_riferimento: data.mese_riferimento,
+          data_inserimento: data.data_inserimento || new Date().toISOString(),
+          operatore_nome: data.operatore_nome,
+          operatore_email: (data.operatore_email || '').toLowerCase(),
+          importo_originale: data.importo_originale !== undefined && data.importo_originale !== null ? Number(data.importo_originale) : Number(data.importo),
+          storico_modifiche: Array.isArray(data.storico_modifiche) ? data.storico_modifiche : [],
+          created_at: data.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
       }
 
       const { error } = await supabase.from(table).upsert(payload);
@@ -183,6 +230,52 @@ const App: React.FC = () => {
       addToast("Errore Cloud: " + e.message, "error");
       throw e;
     } finally { setIsSyncing(false); }
+  };
+
+  const handleCreateOrdineSito = async (data: { cliente: string; importo: number; mese_riferimento: string }) => {
+    const newOrder: OrdineSito = {
+      id: Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+      cliente: data.cliente,
+      importo: data.importo,
+      mese_riferimento: data.mese_riferimento,
+      data_inserimento: new Date().toISOString(),
+      operatore_nome: currentUser?.nome || 'Operatore',
+      operatore_email: currentUser?.email || '',
+      importo_originale: data.importo,
+      storico_modifiche: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const updatedList = [newOrder, ...ordiniSito];
+    setOrdiniSito(updatedList);
+    localStorage.setItem('emergency_snapshot_ordini_sito', JSON.stringify(updatedList));
+
+    if (supabase) {
+      try {
+        await syncToCloud('ordini_sito', newOrder);
+      } catch (e: any) {
+        console.warn("Ordine sito salvato in locale. Verifica creazione tabella su Supabase.", e);
+      }
+    } else {
+      addToast("Ordine Sito salvato in locale", "success");
+    }
+  };
+
+  const handleUpdateOrdineSito = async (updatedOrder: OrdineSito) => {
+    const updatedList = ordiniSito.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+    setOrdiniSito(updatedList);
+    localStorage.setItem('emergency_snapshot_ordini_sito', JSON.stringify(updatedList));
+
+    if (supabase) {
+      try {
+        await syncToCloud('ordini_sito', updatedOrder);
+      } catch (e: any) {
+        console.warn("Modifica salvata in locale.", e);
+      }
+    } else {
+      addToast("Importo modificato con tracciamento locale", "success");
+    }
   };
 
   const handleLogout = () => {
@@ -198,6 +291,7 @@ const App: React.FC = () => {
       vendite,
       agenti,
       operatori,
+      ordiniSito,
       metodiPagamento,
       emailConfig,
       dbConfig,
@@ -224,6 +318,7 @@ const App: React.FC = () => {
         if (data.vendite) setVendite(data.vendite);
         if (data.agenti) setAgenti(data.agenti);
         if (data.operatori) setOperatori(data.operatori);
+        if (data.ordiniSito) setOrdiniSito(data.ordiniSito);
         if (data.metodiPagamento) setMetodiPagamento(data.metodiPagamento);
         addToast("Ripristino completato! Sincronizzare se necessario.", "info");
       } catch (err) {
@@ -269,11 +364,29 @@ const App: React.FC = () => {
         zona: a.zona
       }));
 
-      await Promise.all([
+      const promises: PromiseLike<any>[] = [
         supabase.from('vendite').upsert(mappedVendite),
         supabase.from('agenti').upsert(mappedAgenti),
         supabase.from('operatori').upsert(operatori)
-      ]);
+      ];
+
+      if (ordiniSito.length > 0) {
+        promises.push(supabase.from('ordini_sito').upsert(ordiniSito.map(o => ({
+          id: o.id,
+          cliente: o.cliente,
+          importo: Number(o.importo),
+          mese_riferimento: o.mese_riferimento,
+          data_inserimento: o.data_inserimento,
+          operatore_nome: o.operatore_nome,
+          operatore_email: o.operatore_email,
+          importo_originale: o.importo_originale,
+          storico_modifiche: o.storico_modifiche,
+          created_at: o.created_at,
+          updated_at: o.updated_at
+        }))));
+      }
+
+      await Promise.all(promises);
 
       addToast("Database Cloud allineato!", "success");
       fetchData();
@@ -326,6 +439,7 @@ const App: React.FC = () => {
             <button onClick={() => setView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'dashboard' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><TrendingUp className="w-5 h-5" /><span className="font-medium">Dashboard</span></button>
             <button onClick={() => setView('list')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'list' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List className="w-5 h-5" /><span className="font-medium">Vendite</span></button>
             <button onClick={() => setView('statement')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'statement' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><FileText className="w-5 h-5" /><span className="font-medium">Estratto Conto</span></button>
+            <button onClick={() => setView('site_orders')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'site_orders' ? 'bg-amber-500 text-white shadow-lg font-bold' : 'text-slate-400 hover:text-white'}`}><ShoppingBag className="w-5 h-5" /><span className="font-medium">Ordini Sito</span></button>
             <button onClick={() => setView('agents')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'agents' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Contact2 className="w-5 h-5" /><span className="font-medium">Agenti</span></button>
             {currentUser.role === 'admin' && (
               <button onClick={() => setView('operators')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'operators' ? 'bg-[#32964D] text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Users className="w-5 h-5" /><span className="font-medium">Operatori</span></button>
@@ -340,10 +454,21 @@ const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col overflow-hidden pt-12 md:pt-0">
         <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 flex-shrink-0 no-print">
-          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view.toUpperCase()}</h2>
-          <div className="flex items-center gap-4">
-            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse"><RefreshCw className="w-4 h-4 animate-spin" /> AGGIORNAMENTO...</div>}
-            <button onClick={() => setIsFormOpen(true)} className="bg-[#32964D] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all"><Plus className="w-4 h-4" /> Nuova Pratica</button>
+          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">{view === 'site_orders' ? 'ORDINI SITO' : view.toUpperCase()}</h2>
+          <div className="flex items-center gap-3">
+            {isSyncing && <div className="flex items-center gap-2 text-emerald-600 font-bold animate-pulse text-xs"><RefreshCw className="w-4 h-4 animate-spin" /> AGGIORNAMENTO...</div>}
+            <button 
+              onClick={() => setIsSiteOrderModalOpen(true)} 
+              className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-amber-500/20 hover:scale-105 transition-all"
+            >
+              <ShoppingBag className="w-4 h-4" /> Ordine Sito
+            </button>
+            <button 
+              onClick={() => setIsFormOpen(true)} 
+              className="bg-[#32964D] text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Nuova Pratica
+            </button>
           </div>
         </header>
 
@@ -353,11 +478,28 @@ const App: React.FC = () => {
             {view === 'statement' && <StatementOfAccount agenti={filteredAgenti} vendite={filteredVendite} metodiDisponibili={metodiPagamento} emailConfig={emailConfig || { operatore_email: currentUser.email, provider: 'local' }} onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} isAdmin={currentUser.role === 'admin'} />}
             {view === 'dashboard' && <Dashboard vendite={filteredVendite} isAdmin={currentUser.role === 'admin'} />}
             {view === 'list' && <SalesTable vendite={filteredVendite} metodiDisponibili={metodiPagamento} isAdmin={currentUser.role === 'admin'} onIncasso={(id) => syncToCloud('vendite', {id, incassato: true})} onVerifyPayment={(id) => syncToCloud('vendite', {id, pagamentoVerificato: true})} onEdit={(v) => { setEditingVendita(v); setIsFormOpen(true); }} onDelete={(id) => supabase?.from('vendite').delete().eq('id', id).then(() => fetchData())} onUpdateNotizie={(id, txt, neu, mit) => syncToCloud('vendite', {id, notizie: txt, nuove_notizie: neu, ultimo_mittente: mit})} currentUserNome={currentUser.nome} />}
+            {view === 'site_orders' && (
+              <SiteOrdersList 
+                ordini={ordiniSito} 
+                currentUser={currentUser} 
+                onUpdateOrdine={handleUpdateOrdineSito} 
+                onOpenNewModal={() => setIsSiteOrderModalOpen(true)} 
+              />
+            )}
             {view === 'agents' && <AgentManager agenti={agenti} operatori={operatori} isAdmin={currentUser.role === 'admin'} currentUser={currentUser} onUpdate={(a) => syncToCloud('agenti', a)} onDelete={(id) => supabase?.from('agenti').delete().eq('id', id).then(() => fetchData())} />}
             {view === 'operators' && currentUser.role === 'admin' && <OperatorManager operatori={operatori} onUpdate={(op) => syncToCloud('operatori', op)} onDelete={(id) => supabase?.from('operatori').delete().eq('id', id).then(() => fetchData())} />}
           </div>
         </section>
       </main>
+
+      {isSiteOrderModalOpen && (
+        <SiteOrderModal 
+          isOpen={isSiteOrderModalOpen} 
+          onClose={() => setIsSiteOrderModalOpen(false)} 
+          onSubmit={handleCreateOrdineSito} 
+          currentUser={currentUser} 
+        />
+      )}
 
       {isFormOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
